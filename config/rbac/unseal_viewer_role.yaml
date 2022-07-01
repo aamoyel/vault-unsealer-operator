@@ -1,0 +1,20 @@
+# permissions for end users to view unseals.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: unseal-viewer-role
+rules:
+- apiGroups:
+  - unsealer.amoyel.fr
+  resources:
+  - unseals
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - unsealer.amoyel.fr
+  resources:
+  - unseals/status
+  verbs:
+  - get
