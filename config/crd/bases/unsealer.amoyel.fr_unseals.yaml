@@ -35,17 +35,22 @@ spec:
           spec:
             description: UnsealSpec defines the desired state of Unseal
             properties:
-              name:
-                description: Name of your Unseal ressource
+              image:
+                description: Container image to use
                 type: string
               replicas:
                 description: Number of replicas
+                format: int32
                 type: integer
             type: object
           status:
             description: UnsealStatus defines the observed state of Unseal
             properties:
-              name:
+              clientStatus:
+                description: Status of the client
+                type: string
+              lastPodName:
+                description: Last Pod Name status
                 type: string
             type: object
         type: object

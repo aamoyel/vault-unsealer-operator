@@ -18,15 +18,19 @@ package controllers
 
 import (
 	"context"
+	"os"
+	"reflect"
 
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	unsealerv1alpha1 "github.com/aamoyel/vault-unsealer-operator/api/v1alpha1"
-	"github.com/go-logr/logr"
+	"github.com/aamoyel/vault-unsealer-operator/pkg/resources"
 )
 
 // UnsealReconciler reconciles a Unseal object
@@ -49,26 +53,193 @@ type UnsealReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.12.1/pkg/reconcile
 func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	l := log.FromContext(ctx)
+	log := log.FromContext(ctx)
 
-	l.Info("Enter Reconcile", "req", req)
-
-	unseal := &unsealerv1alpha1.Unseal{}
-
-	r.Get(ctx, types.NamespacedName{Name: req.Name, Namespace: req.Namespace}, unseal)
-
-	l.Info("Enter Reconcile", "spec", unseal.Spec, "status", unseal.Status)
-
-	if unseal.Spec.Name != unseal.Status.Name {
-		unseal.Status.Name = unseal.Spec.Name
-		r.Status().Update(ctx, unseal)
+	// Get the client's custom resource that triggered the event
+	var unsealResource = &unsealerv1alpha1.Unseal{}
+	if err := r.Get(ctx, req.NamespacedName, unsealResource); err != nil {
+		log.Error(err, "unable to fetch client")
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	return ctrl.Result{}, nil
-}
+	// Deep copy client resource
+	//unsealResourceOld := unsealResource.DeepCopy()
 
-func (r *UnsealReconciler) reconcileDeploy(ctx context.Context, unseal *unsealerv1alpha1.Unseal, l logr.Logger) error {
-	return nil
+	// If field ClientStatus in the status of CR is empty set it to Pending
+	if unsealResource.Status.ClientStatus == "" {
+		unsealResource.Status.ClientStatus = unsealerv1alpha1.StatusPending
+	}
+
+	// TESTING FOR PODS PHASE
+	podsPhase := resources.CreateDeploy(unsealResource)
+	for _, pods := range podsPhase {
+		pod.Status.Phase
+	}
+	os.Exit(1)
+
+	// Switch implementing state machine logic
+	switch unsealResource.Status.ClientStatus {
+	case unsealerv1alpha1.StatusPending:
+		unsealResource.Status.ClientStatus = unsealerv1alpha1.StatusRunning
+
+		// Set ClientStatus to running and update the status of resources in the cluster
+		err := r.Status().Update(context.TODO(), unsealResource)
+		if err != nil {
+			log.Error(err, "failed to update client status")
+			return ctrl.Result{}, err
+		} else {
+			log.Info("updated client status: " + unsealResource.Status.ClientStatus)
+			return ctrl.Result{Requeue: true}, nil
+		}
+
+	case unsealerv1alpha1.StatusRunning:
+		// Create a Deployment object and store it in a deployment
+		deployment := resources.CreateDeploy(unsealResource)
+
+		// Check if Deployment exists
+		query := &appsv1.Deployment{}
+		err := r.Client.Get(ctx, client.ObjectKey{Name: deployment.ObjectMeta.Name, Namespace: deployment.Namespace}, query)
+		if err != nil && errors.IsNotFound(err) {
+			// If LastDeployName is empty create a new deployment
+			if unsealResource.Status.LastDeployName == "" {
+				err = ctrl.SetControllerReference(unsealResource, deployment, r.Scheme)
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+
+				// Create deployment on the cluster from deployment variable
+				err = r.Create(context.TODO(), deployment)
+				if err != nil {
+					return ctrl.Result{}, err
+				}
+
+				log.Info("Deployment created successfully", "name", deployment.Name)
+
+				// Trigger requeue
+				return ctrl.Result{}, nil
+			} else {
+				unsealResource.Status.ClientStatus = unsealerv1alpha1.StatusCleaning
+			}
+
+		} else if err != nil {
+			log.Error(err, "cannot get deployment")
+			// Cannot get deployment; Return error
+			return ctrl.Result{}, err
+
+		} else if query.Status.ReadyReplicas == appsv1.DeploymentReplicaFailure ||
+			query.Status.Phase == corev1.PodSucceeded {
+			log.Info("container terminated", "reason", query.Status.Reason, "message", query.Status.Message)
+
+			// If pod failed or succeeded switch custom resource to Cleaning state
+			unsealResource.Status.ClientStatus = unsealerv1alpha1.StatusCleaning
+		} else if query.Status.Phase == corev1.PodRunning {
+			if unsealResource.Status.LastPodName != unsealResource.Spec.ContainerImage+unsealResource.Spec.ContainerTag {
+				if query.Status.ContainerStatuses[0].Ready {
+					log.Info("Trying to bind to: " + query.Status.PodIP)
+
+					if !rest.GetClient(unsealResource, query.Status.PodIP) {
+						if rest.BindClient(unsealResource, query.Status.PodIP) {
+							log.Info("Client" + unsealResource.Spec.ClientId + " is binded to pod " + query.ObjectMeta.GetName() + ".")
+							unsealResource.Status.ClientStatus = unsealerv1alpha1.StatusCleaning
+						} else {
+							log.Info("Client not added.")
+						}
+					} else {
+						log.Info("Client binded already.")
+					}
+				} else {
+					log.Info("Container not ready, reschedule bind")
+					return ctrl.Result{Requeue: true}, err
+				}
+
+				log.Info("Client last pod name: " + unsealResource.Status.LastPodName)
+				log.Info("Pod is running.")
+			}
+		} else if query.Status.Phase == corev1.PodPending {
+			return ctrl.Result{Requeue: true}, nil
+		} else {
+			return ctrl.Result{Requeue: true}, err
+		}
+
+		if !reflect.DeepEqual(unsealResourceOld.Status, unsealResource.Status) {
+			err = r.Status().Update(context.TODO(), unsealResource)
+			if err != nil {
+				log.Error(err, "failed to update client status from running")
+				return ctrl.Result{}, err
+			} else {
+				log.Info("updated client status RUNNING -> " + unsealResource.Status.ClientStatus)
+				return ctrl.Result{Requeue: true}, nil
+			}
+		}
+	case unsealerv1alpha1.StatusCleaning:
+		query := &corev1.Pod{}
+		HasClients := rest.HasClients(unsealResource, query.Status.PodIP)
+
+		err := r.Client.Get(ctx, client.ObjectKey{Namespace: unsealResource.Namespace, Name: unsealResource.Status.LastPodName}, query)
+		if err == nil && unsealResource.ObjectMeta.DeletionTimestamp.IsZero() {
+			if !HasClients {
+				err = r.Delete(context.TODO(), query)
+				if err != nil {
+					log.Error(err, "Failed to remove old pod")
+					return ctrl.Result{}, err
+				} else {
+					log.Info("Old pod removed")
+					return ctrl.Result{Requeue: true}, nil
+				}
+			}
+		}
+
+		if unsealResource.Status.LastPodName != unsealResource.Spec.ContainerImage+unsealResource.Spec.ContainerTag {
+			unsealResource.Status.ClientStatus = unsealerv1alpha1.StatusRunning
+			unsealResource.Status.LastPodName = unsealResource.Spec.ContainerImage + unsealResource.Spec.ContainerTag
+		} else {
+			unsealResource.Status.ClientStatus = unsealerv1alpha1.StatusPending
+			unsealResource.Status.LastPodName = ""
+		}
+
+		if !reflect.DeepEqual(unsealResourceOld.Status, unsealResource.Status) {
+			err = r.Status().Update(context.TODO(), unsealResource)
+			if err != nil {
+				log.Error(err, "failed to update client status from cleaning")
+				return ctrl.Result{}, err
+			} else {
+				log.Info("updated client status CLEANING -> " + unsealResource.Status.ClientStatus)
+				return ctrl.Result{Requeue: true}, nil
+			}
+		}
+	default:
+	}
+
+	// If field ClientStatus in the status of CR is empty set it to Pending
+
+	/*if err := r.Get(ctx, req.NamespacedName, unsealResource); err != nil {
+			log.Error(err, "unable to fetch client")
+			return ctrl.Result{}, client.IgnoreNotFound(err)
+		}
+
+		// Update status fields
+		r.Get(ctx, types.NamespacedName{Name: req.Name, Namespace: req.Namespace}, unseal)
+		if unseal.Spec.Replicas != unseal.Status.Replicas {
+			unseal.Status.Replicas = unseal.Spec.Replicas
+			r.Status().Update(ctx, unseal)
+		}
+
+		r.reconcileDeploy(ctx, unseal, log)
+
+		return ctrl.Result{}, nil
+	}
+
+	func (r *UnsealReconciler) reconcileDeploy(ctx context.Context, unseal *unsealerv1alpha1.Unseal, log logr.Logger) error {
+		deployment := &appsv1.Deployment{}
+		err := r.Get(ctx, types.NamespacedName{Name: unseal.Name, Namespace: unseal.Namespace}, deployment)
+		if err == nil {
+			// Deployment already exist
+			return nil
+		}
+
+		return r.Create(ctx, deployment)*/
+
+	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
