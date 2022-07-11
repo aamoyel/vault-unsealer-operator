@@ -10,7 +10,7 @@ import (
 
 func int32Ptr(i int32) *int32 { return &i }
 
-func getLabels(unsealResource *unsealerv1alpha1.Unseal) map[string]string {
+func GetLabels(unsealResource *unsealerv1alpha1.Unseal) map[string]string {
 	return map[string]string{
 		"app":     unsealResource.Name,
 		"part-of": unsealResource.Name,
@@ -22,16 +22,16 @@ func CreateDeploy(unsealResource *unsealerv1alpha1.Unseal) *appsv1.Deployment {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      unsealResource.Name,
 			Namespace: unsealResource.Namespace,
-			Labels:    getLabels(unsealResource),
+			Labels:    GetLabels(unsealResource),
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: int32Ptr(unsealResource.Spec.Replicas),
 			Selector: &metav1.LabelSelector{
-				MatchLabels: getLabels(unsealResource),
+				MatchLabels: GetLabels(unsealResource),
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: getLabels(unsealResource),
+					Labels: GetLabels(unsealResource),
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{

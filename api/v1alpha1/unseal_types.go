@@ -21,7 +21,9 @@ import (
 )
 
 const (
-	StatusPending  = "PENDING"
+	// Pending: Switch to Running state
+	StatusPending = "PENDING"
+	// Running: Create deployment
 	StatusRunning  = "RUNNING"
 	StatusCleaning = "CLEANING"
 )
