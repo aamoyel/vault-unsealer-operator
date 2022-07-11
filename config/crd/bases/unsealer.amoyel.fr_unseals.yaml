@@ -46,11 +46,11 @@ spec:
           status:
             description: UnsealStatus defines the observed state of Unseal
             properties:
-              clientStatus:
-                description: Status of the client
-                type: string
-              lastPodName:
+              lastDeployName:
                 description: Last Pod Name status
+                type: string
+              unsealStatus:
+                description: Status of the client
                 type: string
             type: object
         type: object

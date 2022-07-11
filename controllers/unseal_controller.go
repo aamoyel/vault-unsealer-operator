@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"os"
 	"reflect"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -65,30 +64,23 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// Deep copy client resource
 	//unsealResourceOld := unsealResource.DeepCopy()
 
-	// If field ClientStatus in the status of CR is empty set it to Pending
-	if unsealResource.Status.ClientStatus == "" {
-		unsealResource.Status.ClientStatus = unsealerv1alpha1.StatusPending
+	// If field UnsealStatus in the status of CR is empty set it to Pending
+	if unsealResource.Status.UnsealStatus == "" {
+		unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusPending
 	}
-
-	// TESTING FOR PODS PHASE
-	podsPhase := resources.CreateDeploy(unsealResource)
-	for _, pods := range podsPhase {
-		pod.Status.Phase
-	}
-	os.Exit(1)
 
 	// Switch implementing state machine logic
-	switch unsealResource.Status.ClientStatus {
+	switch unsealResource.Status.UnsealStatus {
 	case unsealerv1alpha1.StatusPending:
-		unsealResource.Status.ClientStatus = unsealerv1alpha1.StatusRunning
+		unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusRunning
 
-		// Set ClientStatus to running and update the status of resources in the cluster
+		// Set UnsealStatus to running and update the status of resources in the cluster
 		err := r.Status().Update(context.TODO(), unsealResource)
 		if err != nil {
 			log.Error(err, "failed to update client status")
 			return ctrl.Result{}, err
 		} else {
-			log.Info("updated client status: " + unsealResource.Status.ClientStatus)
+			log.Info("updated client status: " + unsealResource.Status.UnsealStatus)
 			return ctrl.Result{Requeue: true}, nil
 		}
 
@@ -118,7 +110,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				// Trigger requeue
 				return ctrl.Result{}, nil
 			} else {
-				unsealResource.Status.ClientStatus = unsealerv1alpha1.StatusCleaning
+				unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusCleaning
 			}
 
 		} else if err != nil {
@@ -126,13 +118,13 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			// Cannot get deployment; Return error
 			return ctrl.Result{}, err
 
-		} else if query.Status.ReadyReplicas == appsv1.DeploymentReplicaFailure ||
-			query.Status.Phase == corev1.PodSucceeded {
+		} else if query.Status.Conditions == appsv1.Deploym ||
+			query.Status.Conditions == appsv1.DeploymentCondition.Status {
 			log.Info("container terminated", "reason", query.Status.Reason, "message", query.Status.Message)
 
-			// If pod failed or succeeded switch custom resource to Cleaning state
-			unsealResource.Status.ClientStatus = unsealerv1alpha1.StatusCleaning
-		} else if query.Status.Phase == corev1.PodRunning {
+			// If pod failed or succeeded, switch custom resource to Cleaning state
+			unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusCleaning
+		} else if query.Status == appsv1.DeploymentStatus {
 			if unsealResource.Status.LastPodName != unsealResource.Spec.ContainerImage+unsealResource.Spec.ContainerTag {
 				if query.Status.ContainerStatuses[0].Ready {
 					log.Info("Trying to bind to: " + query.Status.PodIP)
@@ -140,7 +132,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					if !rest.GetClient(unsealResource, query.Status.PodIP) {
 						if rest.BindClient(unsealResource, query.Status.PodIP) {
 							log.Info("Client" + unsealResource.Spec.ClientId + " is binded to pod " + query.ObjectMeta.GetName() + ".")
-							unsealResource.Status.ClientStatus = unsealerv1alpha1.StatusCleaning
+							unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusCleaning
 						} else {
 							log.Info("Client not added.")
 						}
@@ -167,7 +159,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				log.Error(err, "failed to update client status from running")
 				return ctrl.Result{}, err
 			} else {
-				log.Info("updated client status RUNNING -> " + unsealResource.Status.ClientStatus)
+				log.Info("updated client status RUNNING -> " + unsealResource.Status.UnsealStatus)
 				return ctrl.Result{Requeue: true}, nil
 			}
 		}

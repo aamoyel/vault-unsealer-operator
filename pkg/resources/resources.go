@@ -10,7 +10,7 @@ import (
 
 func int32Ptr(i int32) *int32 { return &i }
 
-func GetLabels(unsealResource *unsealerv1alpha1.Unseal) map[string]string {
+func getLabels(unsealResource *unsealerv1alpha1.Unseal) map[string]string {
 	return map[string]string{
 		"app":     unsealResource.Name,
 		"part-of": unsealResource.Name,

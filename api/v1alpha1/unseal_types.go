@@ -46,7 +46,7 @@ type UnsealStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Status of the client
-	ClientStatus string `json:"clientStatus,omitempty"`
+	UnsealStatus string `json:"unsealStatus,omitempty"`
 	// Last Pod Name status
 	LastDeployName string `json:"lastDeployName,omitempty"`
 }
