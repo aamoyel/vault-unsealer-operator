@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -57,7 +58,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// Get the unseal's custom resource that triggered the event
 	var unsealResource = &unsealerv1alpha1.Unseal{}
 	if err := r.Get(ctx, req.NamespacedName, unsealResource); err != nil {
-		log.Error(err, "unable to fetch unseal resource")
+		log.Info("Ressource removed", "old resource", err)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -66,7 +67,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	log.Info("Pods related to deployment", unsealPodNames)
+	fmt.Printf("Pods managed by deployment %s : %v\n", unsealResource.ObjectMeta.Name, len(unsealPodNames))
 
 	// Deep copy unseal resource
 	unsealResourceOld := unsealResource.DeepCopy()
@@ -115,7 +116,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					return ctrl.Result{}, err
 				}
 
-				log.Info("Deployment created successfully, name :", deployment.Name)
+				log.Info("Deployment created successfully", "name", deployment.Name)
 
 				// Trigger requeue
 				return ctrl.Result{}, nil
@@ -130,7 +131,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 		} else if podStruct.Status.Phase == corev1.PodFailed ||
 			podStruct.Status.Phase == corev1.PodSucceeded {
-			log.Info("Pod terminated", podStruct.Status.Reason)
+			log.Info("Pod terminated", "reason", podStruct.Status.Reason, "message", podStruct.Status.Message)
 			// If pod failed or succeeded, switch custom resource to Cleaning state
 			unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusCleaning
 		} else if podStruct.Status.Phase == corev1.PodPending {
@@ -147,7 +148,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				log.Error(err, "failed to update client status from running")
 				return ctrl.Result{}, err
 			} else {
-				log.Info("updated client status RUNNING", unsealResource.Status.UnsealStatus)
+				log.Info("updated client status RUNNING -> " + unsealResource.Status.UnsealStatus)
 				return ctrl.Result{Requeue: true}, nil
 			}
 		}
@@ -207,7 +208,7 @@ func (r *UnsealReconciler) getPodList(ctx context.Context, unsealResource *unsea
 		client.MatchingLabels(resources.GetLabels(unsealResource)),
 	}
 	if err = r.List(ctx, podList, listOpts...); err != nil {
-		log.Error(err, "Failed to list pods in", unsealResource.Namespace)
+		log.Error(err, "Failed to list pods in", unsealResource.Namespace, "for", unsealResource.Name, "resource")
 		return nil, err
 	}
 	for _, pod := range podList.Items {
