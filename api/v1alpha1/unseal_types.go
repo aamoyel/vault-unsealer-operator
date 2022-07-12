@@ -20,6 +20,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// Pending: Switch to Running state
+	StatusPending = "PENDING"
+	// Running: Create deployment
+	StatusRunning  = "RUNNING"
+	StatusCleaning = "CLEANING"
+)
+
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
@@ -28,10 +36,10 @@ type UnsealSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Name of your Unseal ressource
-	Name string `json:"name,omitempty"`
+	// Container image to use
+	Image string `json:"image,omitempty"`
 	// Number of replicas
-	Replicas int `json:"replicas,omitempty"`
+	Replicas int32 `json:"replicas,omitempty"`
 }
 
 // UnsealStatus defines the observed state of Unseal
@@ -39,7 +47,10 @@ type UnsealStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	Name string `json:"name,omitempty"`
+	// Status of the unseal
+	UnsealStatus string `json:"unsealStatus,omitempty"`
+	// Last Pod Name status
+	LastDeployName string `json:"lastDeployName,omitempty"`
 }
 
 //+kubebuilder:object:root=true
