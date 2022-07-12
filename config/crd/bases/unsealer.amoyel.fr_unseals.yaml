@@ -50,7 +50,7 @@ spec:
                 description: Last Pod Name status
                 type: string
               unsealStatus:
-                description: Status of the client
+                description: Status of the unseal
                 type: string
             type: object
         type: object

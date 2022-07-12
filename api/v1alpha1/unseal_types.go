@@ -47,7 +47,7 @@ type UnsealStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Status of the client
+	// Status of the unseal
 	UnsealStatus string `json:"unsealStatus,omitempty"`
 	// Last Pod Name status
 	LastDeployName string `json:"lastDeployName,omitempty"`
