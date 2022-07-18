@@ -53,6 +53,7 @@ type UnsealStatus struct {
 	LastDeployName string `json:"lastDeployName,omitempty"`
 }
 
+// +kubebuilder:printcolumn:JSONPath=".status.unsealStatus",name=Status,type=string
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
