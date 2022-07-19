@@ -16,8 +16,8 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.unsealStatus
-      name: Status
+    - jsonPath: .status.vaultStatus
+      name: Vault Status
       type: string
     name: v1alpha1
     schema:
@@ -44,11 +44,15 @@ spec:
                 description: Number of retry, default is 3
                 format: int32
                 type: integer
+              unsealKeysSecret:
+                description: Secret name of your unseal keys
+                type: string
               vaultUrl:
                 description: 'Vault api endpoint to call, example: https://myvault.domain.local:8200
                   If the port 443 you can remove it like this: https://myvault.domain.local'
                 type: string
             required:
+            - unsealKeysSecret
             - vaultUrl
             type: object
           status:
@@ -57,7 +61,7 @@ spec:
               lastJobName:
                 description: Last unseal job name
                 type: string
-              unsealStatus:
+              vaultStatus:
                 description: Status of the unseal
                 type: string
             type: object

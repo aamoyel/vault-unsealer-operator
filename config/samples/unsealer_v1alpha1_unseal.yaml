@@ -5,4 +5,5 @@ metadata:
   namespace: test
 spec:
   vaultUrl: https://vault.amoyel.loc
+  unsealKeysSecret: unsealkeys
   retryCount: 3

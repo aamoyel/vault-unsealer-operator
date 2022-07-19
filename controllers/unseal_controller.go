@@ -64,8 +64,8 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	unsealResourceOld := unsealResource.DeepCopy()
 
 	// If field UnsealStatus in the status of CR is empty set it to Pending
-	if unsealResource.Status.UnsealStatus == "" {
-		unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusPending
+	if unsealResource.Status.VaultStatus == "" {
+		unsealResource.Status.VaultStatus = unsealerv1alpha1.StatusUnsealed
 	}
 
 	// Switch implementing state machine logic

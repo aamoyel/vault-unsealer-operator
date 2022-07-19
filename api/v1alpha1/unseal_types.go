@@ -21,11 +21,12 @@ import (
 )
 
 const (
-	// Pending: Switch to Running state
-	StatusPending = "PENDING"
-	// Running: Create deployment
-	StatusRunning  = "RUNNING"
-	StatusCleaning = "CLEANING"
+	// Unsealed: vault is unsealed, everything is ok -> check periodicaly if vault is unseal or not
+	StatusUnsealed = "UNSEALED"
+	// Sealed: vault is sealed -> unseal the vault
+	StatusSealed = "SEALED"
+	// Changing: currently in a unseal process
+	StatusChanging = "CHANGING"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -40,6 +41,9 @@ type UnsealSpec struct {
 	// If the port 443 you can remove it like this: https://myvault.domain.local
 	//+kubebuilder:validation:Required
 	VaultUrl string `json:"vaultUrl"`
+	// Secret name of your unseal keys
+	//+kubebuilder:validation:Required
+	UnsealKeysSecret string `json:"unsealKeysSecret"`
 	// Number of retry, default is 3
 	//+kubebuilder:default:=3
 	RetryCount int32 `json:"retryCount,omitempty"`
@@ -51,12 +55,12 @@ type UnsealStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Status of the unseal
-	UnsealStatus string `json:"unsealStatus,omitempty"`
+	VaultStatus string `json:"vaultStatus,omitempty"`
 	// Last unseal job name
 	LastJobName string `json:"lastJobName,omitempty"`
 }
 
-//+kubebuilder:printcolumn:JSONPath=".status.unsealStatus",name=Status,type=string
+//+kubebuilder:printcolumn:JSONPath=".status.vaultStatus",name=Vault Status,type=string
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
