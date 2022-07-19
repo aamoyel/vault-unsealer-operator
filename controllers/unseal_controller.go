@@ -29,6 +29,7 @@ import (
 
 	unsealerv1alpha1 "github.com/aamoyel/vault-unsealer-operator/api/v1alpha1"
 	"github.com/aamoyel/vault-unsealer-operator/pkg/resources"
+	"github.com/aamoyel/vault-unsealer-operator/pkg/vault"
 )
 
 // UnsealReconciler reconciles a Unseal object
@@ -63,27 +64,33 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// Deep copy unseal resource
 	unsealResourceOld := unsealResource.DeepCopy()
 
-	// If field UnsealStatus in the status of CR is empty set it to Pending
-	if unsealResource.Status.VaultStatus == "" {
-		unsealResource.Status.VaultStatus = unsealerv1alpha1.StatusUnsealed
+	// Get the actual status and populate field
+	if unsealResource.Spec.VaultAddr != "" {
+		vaultStatus, err := vault.GetVaultStatus(unsealResource.Spec.VaultAddr)
+		if err != nil {
+			log.Error(err, "Vault Status error")
+		}
+		if !vaultStatus {
+			unsealResource.Status.VaultStatus = unsealerv1alpha1.StatusUnsealed
+		} else {
+			unsealResource.Status.VaultStatus = unsealerv1alpha1.StatusChanging
+		}
 	}
 
-	// Switch implementing state machine logic
-	switch unsealResource.Status.UnsealStatus {
-	case unsealerv1alpha1.StatusPending:
-		unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusRunning
-
-		// Set UnsealStatus to running and update the status of resources in the cluster
+	// Switch implementing vault state logic
+	switch unsealResource.Status.VaultStatus {
+	case unsealerv1alpha1.StatusUnsealed:
+		// Set VaultStatus to unseal and update the status of resources in the cluster
 		err := r.Status().Update(context.TODO(), unsealResource)
 		if err != nil {
 			log.Error(err, "failed to update unseal status")
 			return ctrl.Result{}, err
 		} else {
-			log.Info("updated unseal status: " + unsealResource.Status.UnsealStatus)
+			log.Info("updated unseal status: " + unsealResource.Status.VaultStatus)
 			return ctrl.Result{Requeue: true}, nil
 		}
 
-	case unsealerv1alpha1.StatusRunning:
+	case unsealerv1alpha1.StatusChanging:
 		// Create a Job object and store it in a job variable
 		job := resources.CreateJob(unsealResource)
 
@@ -105,11 +112,10 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				}
 
 				log.Info("Unseal Job created successfully", "name", job.Name)
-
 				// Trigger requeue
 				return ctrl.Result{}, nil
 			} else {
-				unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusCleaning
+				unsealResource.Status.VaultStatus = unsealerv1alpha1.StatusCleaning
 			}
 
 		} else if err != nil {
@@ -125,10 +131,10 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if !reflect.DeepEqual(unsealResourceOld.Status, unsealResource.Status) {
 			err = r.Status().Update(context.TODO(), unsealResource)
 			if err != nil {
-				log.Error(err, "failed to update unseal status from running")
+				log.Error(err, "failed to update unseal status from unsealing")
 				return ctrl.Result{}, err
 			} else {
-				log.Info("updated unseal status RUNNING -> " + unsealResource.Status.UnsealStatus)
+				log.Info("updated unseal status UNSEALING -> " + unsealResource.Status.VaultStatus)
 				return ctrl.Result{Requeue: true}, nil
 			}
 		}
@@ -149,10 +155,10 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 		// If LastJobName != NewJobName update status accordingly
 		if unsealResource.Status.LastJobName != unsealResource.ObjectMeta.Namespace+"/"+unsealResource.ObjectMeta.Name {
-			unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusRunning
+			unsealResource.Status.VaultStatus = unsealerv1alpha1.StatusChanging
 			unsealResource.Status.LastJobName = unsealResource.ObjectMeta.Namespace + "/" + unsealResource.ObjectMeta.Name
 		} else {
-			unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusPending
+			unsealResource.Status.VaultStatus = unsealerv1alpha1.StatusCleaning
 			unsealResource.Status.LastJobName = ""
 		}
 
@@ -162,7 +168,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				log.Error(err, "failed to update unseal status from cleaning")
 				return ctrl.Result{}, err
 			} else {
-				log.Info("updated unseal status CLEANING -> " + unsealResource.Status.UnsealStatus)
+				log.Info("updated unseal status CLEANING -> " + unsealResource.Status.VaultStatus)
 				return ctrl.Result{Requeue: true}, nil
 			}
 		}

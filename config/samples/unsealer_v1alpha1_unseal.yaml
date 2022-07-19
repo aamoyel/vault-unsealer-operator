@@ -4,6 +4,6 @@ metadata:
   name: unseal-sample
   namespace: test
 spec:
-  vaultUrl: https://vault.amoyel.loc
+  vaultAddr: https://vault.amoyel.loc
   unsealKeysSecret: unsealkeys
   retryCount: 3

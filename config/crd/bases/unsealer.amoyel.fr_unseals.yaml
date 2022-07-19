@@ -47,13 +47,13 @@ spec:
               unsealKeysSecret:
                 description: Secret name of your unseal keys
                 type: string
-              vaultUrl:
+              vaultAddr:
                 description: 'Vault api endpoint to call, example: https://myvault.domain.local:8200
                   If the port 443 you can remove it like this: https://myvault.domain.local'
                 type: string
             required:
             - unsealKeysSecret
-            - vaultUrl
+            - vaultAddr
             type: object
           status:
             description: UnsealStatus defines the observed state of Unseal

@@ -23,10 +23,10 @@ import (
 const (
 	// Unsealed: vault is unsealed, everything is ok -> check periodicaly if vault is unseal or not
 	StatusUnsealed = "UNSEALED"
-	// Sealed: vault is sealed -> unseal the vault
-	StatusSealed = "SEALED"
-	// Changing: currently in a unseal process
-	StatusChanging = "CHANGING"
+	// Changing: vault is in seal state -> launch unseal process
+	StatusChanging = "UNSEALING"
+	// Cleaning: remove job from cluster and wait for next seal
+	StatusCleaning = "CLEANING"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -40,7 +40,7 @@ type UnsealSpec struct {
 	// Vault api endpoint to call, example: https://myvault.domain.local:8200
 	// If the port 443 you can remove it like this: https://myvault.domain.local
 	//+kubebuilder:validation:Required
-	VaultUrl string `json:"vaultUrl"`
+	VaultAddr string `json:"vaultAddr"`
 	// Secret name of your unseal keys
 	//+kubebuilder:validation:Required
 	UnsealKeysSecret string `json:"unsealKeysSecret"`
