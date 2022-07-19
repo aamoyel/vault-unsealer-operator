@@ -5,4 +5,4 @@ metadata:
   namespace: test
 spec:
   vaultUrl: https://vault.amoyel.loc
-  retryCount: 2
+  retryCount: 3
