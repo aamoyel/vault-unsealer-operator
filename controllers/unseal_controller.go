@@ -18,11 +18,9 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -62,13 +60,6 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Return pod names of the CR deployment
-	unsealPodNames, err := r.getPodList(ctx, unsealResource)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	fmt.Printf("Pods managed by deployment %s : %v\n", unsealResource.ObjectMeta.Name, len(unsealPodNames))
-
 	// Deep copy unseal resource
 	unsealResourceOld := unsealResource.DeepCopy()
 
@@ -93,30 +84,27 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 
 	case unsealerv1alpha1.StatusRunning:
-		// Create a Deployment object and store it in a deployment
-		deployment := resources.CreateDeploy(unsealResource)
+		// Create a Job object and store it in a job variable
+		job := resources.CreateJob(unsealResource)
 
-		// Get pod struct
-		podStruct := &corev1.Pod{}
-
-		// Check if Deployment exists
-		query := &appsv1.Deployment{}
-		err := r.Client.Get(ctx, client.ObjectKey{Name: deployment.ObjectMeta.Name, Namespace: deployment.Namespace}, query)
+		// Check if the Job exists
+		query := &batchv1.Job{}
+		err := r.Client.Get(ctx, client.ObjectKey{Name: job.Name, Namespace: job.Namespace}, query)
 		if err != nil && errors.IsNotFound(err) {
-			// If LastDeployName is empty create a new deployment
-			if unsealResource.Status.LastDeployName == "" {
-				err = ctrl.SetControllerReference(unsealResource, deployment, r.Scheme)
+			// If LastDeployName is empty create a new job
+			if unsealResource.Status.LastJobName == "" {
+				err = ctrl.SetControllerReference(unsealResource, job, r.Scheme)
 				if err != nil {
 					return ctrl.Result{}, err
 				}
 
-				// Create deployment on the cluster from deployment variable
-				err = r.Create(context.TODO(), deployment)
+				// Create job on the cluster from job variable
+				err = r.Create(context.TODO(), job)
 				if err != nil {
 					return ctrl.Result{}, err
 				}
 
-				log.Info("Deployment created successfully", "name", deployment.Name)
+				log.Info("Unseal Job created successfully", "name", job.Name)
 
 				// Trigger requeue
 				return ctrl.Result{}, nil
@@ -125,64 +113,56 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 
 		} else if err != nil {
-			log.Error(err, "cannot get deployment")
-			// Cannot get deployment; Return error
+			log.Error(err, "cannot get job")
+			// Cannot get job; Return error
 			return ctrl.Result{}, err
 
-		} else if podStruct.Status.Phase == corev1.PodFailed ||
-			podStruct.Status.Phase == corev1.PodSucceeded {
-			log.Info("Pod terminated", "reason", podStruct.Status.Reason, "message", podStruct.Status.Message)
-			// If pod failed or succeeded, switch custom resource to Cleaning state
-			unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusCleaning
-		} else if podStruct.Status.Phase == corev1.PodPending {
-			// If the pod is pending —> no-operation
-			return ctrl.Result{Requeue: true}, nil
 		} else {
 			return ctrl.Result{Requeue: true}, err
 		}
 
-		// If client status is changed, update it
+		// If unseal status is changed, update it
 		if !reflect.DeepEqual(unsealResourceOld.Status, unsealResource.Status) {
 			err = r.Status().Update(context.TODO(), unsealResource)
 			if err != nil {
-				log.Error(err, "failed to update client status from running")
+				log.Error(err, "failed to update unseal status from running")
 				return ctrl.Result{}, err
 			} else {
-				log.Info("updated client status RUNNING -> " + unsealResource.Status.UnsealStatus)
+				log.Info("updated unseal status RUNNING -> " + unsealResource.Status.UnsealStatus)
 				return ctrl.Result{Requeue: true}, nil
 			}
 		}
 	case unsealerv1alpha1.StatusCleaning:
-		query := &appsv1.Deployment{}
-		// Remove deployment if status is cleaning
-		err := r.Client.Get(ctx, client.ObjectKey{Namespace: unsealResource.Namespace, Name: unsealResource.Status.LastDeployName}, query)
+		query := &batchv1.Job{}
+		// Remove job if status is cleaning
+		err := r.Client.Get(ctx, client.ObjectKey{Namespace: unsealResource.Namespace, Name: unsealResource.Status.LastJobName}, query)
 		if err == nil && unsealResource.ObjectMeta.DeletionTimestamp.IsZero() {
 			err = r.Delete(context.TODO(), query)
 			if err != nil {
-				log.Error(err, "Failed to remove old deployment", unsealResource.ObjectMeta.Name)
+				log.Error(err, "Failed to remove old job", unsealResource.ObjectMeta.Name)
 				return ctrl.Result{}, err
 			} else {
-				log.Info("Old deployment removed", unsealResource.ObjectMeta.Name)
+				log.Info("Old job removed", unsealResource.ObjectMeta.Name)
 				return ctrl.Result{Requeue: true}, nil
 			}
 		}
 
-		// If LastDeployName != NewDeployName update status accordingly
-		if unsealResource.Status.LastDeployName != unsealResource.ObjectMeta.Namespace+"/"+unsealResource.ObjectMeta.Name {
+		// If LastJobName != NewJobName update status accordingly
+		if unsealResource.Status.LastJobName != unsealResource.ObjectMeta.Namespace+"/"+unsealResource.ObjectMeta.Name {
 			unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusRunning
-			unsealResource.Status.LastDeployName = unsealResource.ObjectMeta.Namespace + "/" + unsealResource.ObjectMeta.Name
+			unsealResource.Status.LastJobName = unsealResource.ObjectMeta.Namespace + "/" + unsealResource.ObjectMeta.Name
 		} else {
 			unsealResource.Status.UnsealStatus = unsealerv1alpha1.StatusPending
-			unsealResource.Status.LastDeployName = ""
+			unsealResource.Status.LastJobName = ""
 		}
 
 		if !reflect.DeepEqual(unsealResourceOld.Status, unsealResource.Status) {
 			err = r.Status().Update(context.TODO(), unsealResource)
 			if err != nil {
-				log.Error(err, "failed to update client status from cleaning")
+				log.Error(err, "failed to update unseal status from cleaning")
 				return ctrl.Result{}, err
 			} else {
-				log.Info("updated client status CLEANING -> " + unsealResource.Status.UnsealStatus)
+				log.Info("updated unseal status CLEANING -> " + unsealResource.Status.UnsealStatus)
 				return ctrl.Result{Requeue: true}, nil
 			}
 		}
@@ -197,22 +177,4 @@ func (r *UnsealReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&unsealerv1alpha1.Unseal{}).
 		Complete(r)
-}
-
-// getPodList returns array of pod names find with deployment labels
-func (r *UnsealReconciler) getPodList(ctx context.Context, unsealResource *unsealerv1alpha1.Unseal) (podNames []string, err error) {
-	log := log.FromContext(ctx)
-	podList := &corev1.PodList{}
-	listOpts := []client.ListOption{
-		client.InNamespace(unsealResource.Namespace),
-		client.MatchingLabels(resources.GetLabels(unsealResource)),
-	}
-	if err = r.List(ctx, podList, listOpts...); err != nil {
-		log.Error(err, "Failed to list pods in", unsealResource.Namespace, "for", unsealResource.Name, "resource")
-		return nil, err
-	}
-	for _, pod := range podList.Items {
-		podNames = append(podNames, pod.Name)
-	}
-	return podNames, nil
 }

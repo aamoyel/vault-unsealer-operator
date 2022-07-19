@@ -39,19 +39,23 @@ spec:
           spec:
             description: UnsealSpec defines the desired state of Unseal
             properties:
-              image:
-                description: Container image to use
-                type: string
-              replicas:
-                description: Number of replicas
+              retryCount:
+                default: 3
+                description: Number of retry, default is 3
                 format: int32
                 type: integer
+              vaultUrl:
+                description: 'Vault api endpoint to call, example: https://myvault.domain.local:8200
+                  If the port 443 you can remove it like this: https://myvault.domain.local'
+                type: string
+            required:
+            - vaultUrl
             type: object
           status:
             description: UnsealStatus defines the observed state of Unseal
             properties:
-              lastDeployName:
-                description: Last Pod Name status
+              lastJobName:
+                description: Last unseal job name
                 type: string
               unsealStatus:
                 description: Status of the unseal

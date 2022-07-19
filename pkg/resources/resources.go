@@ -1,14 +1,12 @@
 package resources
 
 import (
-	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	unsealerv1alpha1 "github.com/aamoyel/vault-unsealer-operator/api/v1alpha1"
 )
-
-func int32Ptr(i int32) *int32 { return &i }
 
 func GetLabels(unsealResource *unsealerv1alpha1.Unseal) map[string]string {
 	return map[string]string{
@@ -17,33 +15,25 @@ func GetLabels(unsealResource *unsealerv1alpha1.Unseal) map[string]string {
 	}
 }
 
-func CreateDeploy(unsealResource *unsealerv1alpha1.Unseal) *appsv1.Deployment {
-	return &appsv1.Deployment{
+func CreateJob(unsealResource *unsealerv1alpha1.Unseal) *batchv1.Job {
+	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      unsealResource.Name,
 			Namespace: unsealResource.Namespace,
 			Labels:    GetLabels(unsealResource),
 		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: int32Ptr(unsealResource.Spec.Replicas),
-			Selector: &metav1.LabelSelector{
-				MatchLabels: GetLabels(unsealResource),
-			},
+		Spec: batchv1.JobSpec{
+			BackoffLimit: &unsealResource.Spec.RetryCount,
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: GetLabels(unsealResource),
-				},
 				Spec: corev1.PodSpec{
+					RestartPolicy: "OnFailure",
 					Containers: []corev1.Container{
 						{
-							Name:  unsealResource.ObjectMeta.Name,
-							Image: unsealResource.Spec.Image,
-							Ports: []corev1.ContainerPort{
-								{
-									Name:          "http",
-									Protocol:      corev1.ProtocolTCP,
-									ContainerPort: 80,
-								},
+							Name:  "unsealer",
+							Image: "nginx:1.23.0-alpine",
+							Command: []string{
+								"sleep",
+								"10",
 							},
 						},
 					},

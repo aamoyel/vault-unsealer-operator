@@ -36,10 +36,13 @@ type UnsealSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Container image to use
-	Image string `json:"image,omitempty"`
-	// Number of replicas
-	Replicas int32 `json:"replicas,omitempty"`
+	// Vault api endpoint to call, example: https://myvault.domain.local:8200
+	// If the port 443 you can remove it like this: https://myvault.domain.local
+	//+kubebuilder:validation:Required
+	VaultUrl string `json:"vaultUrl"`
+	// Number of retry, default is 3
+	//+kubebuilder:default:=3
+	RetryCount int32 `json:"retryCount,omitempty"`
 }
 
 // UnsealStatus defines the observed state of Unseal
@@ -49,11 +52,11 @@ type UnsealStatus struct {
 
 	// Status of the unseal
 	UnsealStatus string `json:"unsealStatus,omitempty"`
-	// Last Pod Name status
-	LastDeployName string `json:"lastDeployName,omitempty"`
+	// Last unseal job name
+	LastJobName string `json:"lastJobName,omitempty"`
 }
 
-// +kubebuilder:printcolumn:JSONPath=".status.unsealStatus",name=Status,type=string
+//+kubebuilder:printcolumn:JSONPath=".status.unsealStatus",name=Status,type=string
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 

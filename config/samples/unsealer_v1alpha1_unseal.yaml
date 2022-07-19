@@ -4,5 +4,5 @@ metadata:
   name: unseal-sample
   namespace: test
 spec:
-  image: nginx:1.23.0-alpine
-  replicas: 4
+  vaultUrl: https://vault.amoyel.loc
+  retryCount: 2
