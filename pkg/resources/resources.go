@@ -33,7 +33,7 @@ func CreateJob(unsealResource *unsealerv1alpha1.Unseal) *batchv1.Job {
 							Image: "nginx:1.23.0-alpine",
 							Command: []string{
 								"sleep",
-								"10",
+								"30",
 							},
 						},
 					},

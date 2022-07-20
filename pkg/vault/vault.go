@@ -29,7 +29,6 @@ func GetVaultStatus(vaultNodes []string) ([]string, error) {
 			sealedNodes = append(sealedNodes, node)
 		}
 	}
-	fmt.Println(sealedNodes)
 	if len(sealedNodes) > 0 {
 		return sealedNodes, nil
 	} else {

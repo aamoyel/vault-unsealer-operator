@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"reflect"
 
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -60,9 +59,6 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		log.Info("Ressource removed", "old resource", err)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-
-	// Deep copy unseal resource
-	unsealResourceOld := unsealResource.DeepCopy()
 
 	// Get the actual status and populate field
 	if unsealResource.Status.VaultStatus == "" {
@@ -108,7 +104,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		query := &batchv1.Job{}
 		err := r.Client.Get(ctx, client.ObjectKey{Name: job.Name, Namespace: job.Namespace}, query)
 		if err != nil && errors.IsNotFound(err) {
-			// If LastDeployName is empty create a new job
+			// If LastJobName is empty create a new job
 			if unsealResource.Status.LastJobName == "" {
 				err = ctrl.SetControllerReference(unsealResource, job, r.Scheme)
 				if err != nil {
@@ -127,7 +123,6 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			} else {
 				unsealResource.Status.VaultStatus = unsealerv1alpha1.StatusCleaning
 			}
-
 		} else if err != nil {
 			log.Error(err, "cannot get job")
 			// Cannot get job; Return error
@@ -137,17 +132,6 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{Requeue: true}, err
 		}
 
-		// If unseal status is changed, update it
-		if !reflect.DeepEqual(unsealResourceOld.Status, unsealResource.Status) {
-			err = r.Status().Update(context.TODO(), unsealResource)
-			if err != nil {
-				log.Error(err, "failed to update unseal status from unsealing")
-				return ctrl.Result{}, err
-			} else {
-				log.Info("updated unseal status UNSEALING -> " + unsealResource.Status.VaultStatus)
-				return ctrl.Result{Requeue: true}, nil
-			}
-		}
 	case unsealerv1alpha1.StatusCleaning:
 		query := &batchv1.Job{}
 		// Remove job if status is cleaning
@@ -172,16 +156,6 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			unsealResource.Status.LastJobName = ""
 		}
 
-		if !reflect.DeepEqual(unsealResourceOld.Status, unsealResource.Status) {
-			err = r.Status().Update(context.TODO(), unsealResource)
-			if err != nil {
-				log.Error(err, "failed to update unseal status from cleaning")
-				return ctrl.Result{}, err
-			} else {
-				log.Info("updated unseal status CLEANING -> " + unsealResource.Status.VaultStatus)
-				return ctrl.Result{Requeue: true}, nil
-			}
-		}
 	default:
 	}
 
@@ -192,5 +166,6 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 func (r *UnsealReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&unsealerv1alpha1.Unseal{}).
+		Owns(&batchv1.Job{}).
 		Complete(r)
 }
