@@ -4,6 +4,9 @@ metadata:
   name: unseal-sample
   namespace: test
 spec:
-  vaultAddr: https://vault.amoyel.loc
-  unsealKeysSecret: unsealkeys
+  vaultNodes:
+    - https://srv-vlt01.amoyel.loc:8200
+    - https://srv-vlt02.amoyel.loc:8200
+    - https://srv-vlt03.amoyel.loc:8200
+  thresholdKeysSecret: unsealkeys
   retryCount: 3

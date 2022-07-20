@@ -12,20 +12,27 @@ var httpClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
-func GetVaultStatus(vaultAddr string) (bool, error) {
-	client, err := vault.NewClient(&vault.Config{Address: vaultAddr, HttpClient: httpClient})
-	if err != nil {
-		return false, fmt.Errorf("unable to initialize Vault client: %v", err)
-	}
+func GetVaultStatus(vaultNodes []string) ([]string, error) {
+	var sealedNodes []string
+	for _, node := range vaultNodes {
+		client, err := vault.NewClient(&vault.Config{Address: node, HttpClient: httpClient})
+		if err != nil {
+			return nil, fmt.Errorf("unable to initialize Vault client: %v", err)
+		}
 
-	sealStatus, err := client.Sys().SealStatus()
-	if err != nil {
-		return false, fmt.Errorf("unable to get seal status: %v", err)
-	}
+		sealStatus, err := client.Sys().SealStatus()
+		if err != nil {
+			return nil, fmt.Errorf("unable to get seal status: %v", err)
+		}
 
-	if sealStatus.Sealed {
-		return true, nil
+		if sealStatus.Sealed {
+			sealedNodes = append(sealedNodes, node)
+		}
+	}
+	fmt.Println(sealedNodes)
+	if len(sealedNodes) > 0 {
+		return sealedNodes, nil
 	} else {
-		return false, nil
+		return nil, nil
 	}
 }

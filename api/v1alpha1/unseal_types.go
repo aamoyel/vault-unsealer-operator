@@ -37,13 +37,13 @@ type UnsealSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Vault api endpoint to call, example: https://myvault.domain.local:8200
-	// If the port 443 you can remove it like this: https://myvault.domain.local
+	// An array of vault instances to call api endpoints for unseal, example for one instance: https://myvault01.domain.local:8200
 	//+kubebuilder:validation:Required
-	VaultAddr string `json:"vaultAddr"`
-	// Secret name of your unseal keys
+	VaultNodes []string `json:"vaultNodes"`
+	// Secret name of your threshold keys. Threshold keys is unseal keys required to unseal you vault instance(s)
+	// You need to create a secret with different key names for each unseal keys
 	//+kubebuilder:validation:Required
-	UnsealKeysSecret string `json:"unsealKeysSecret"`
+	ThresholdKeysSecret string `json:"thresholdKeysSecret"`
 	// Number of retry, default is 3
 	//+kubebuilder:default:=3
 	RetryCount int32 `json:"retryCount,omitempty"`

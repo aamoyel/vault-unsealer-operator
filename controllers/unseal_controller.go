@@ -65,29 +65,39 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	unsealResourceOld := unsealResource.DeepCopy()
 
 	// Get the actual status and populate field
-	if unsealResource.Spec.VaultAddr != "" {
-		vaultStatus, err := vault.GetVaultStatus(unsealResource.Spec.VaultAddr)
-		if err != nil {
-			log.Error(err, "Vault Status error")
-		}
-		if !vaultStatus {
-			unsealResource.Status.VaultStatus = unsealerv1alpha1.StatusUnsealed
-		} else {
-			unsealResource.Status.VaultStatus = unsealerv1alpha1.StatusChanging
-		}
+	if unsealResource.Status.VaultStatus == "" {
+		unsealResource.Status.VaultStatus = unsealerv1alpha1.StatusUnsealed
 	}
 
 	// Switch implementing vault state logic
 	switch unsealResource.Status.VaultStatus {
 	case unsealerv1alpha1.StatusUnsealed:
-		// Set VaultStatus to unseal and update the status of resources in the cluster
-		err := r.Status().Update(context.TODO(), unsealResource)
-		if err != nil {
-			log.Error(err, "failed to update unseal status")
-			return ctrl.Result{}, err
-		} else {
-			log.Info("updated unseal status: " + unsealResource.Status.VaultStatus)
-			return ctrl.Result{Requeue: true}, nil
+		// Get Vault status and make decision based on number of sealed nodes
+		if len(unsealResource.Spec.VaultNodes) > 0 {
+			sealedNodes, err := vault.GetVaultStatus(unsealResource.Spec.VaultNodes)
+			if err != nil {
+				log.Error(err, "Vault Status error")
+			}
+			if len(sealedNodes) > 0 {
+				// Set VaultStatus to changing and update the status of resources in the cluster
+				unsealResource.Status.VaultStatus = unsealerv1alpha1.StatusChanging
+				err := r.Status().Update(context.TODO(), unsealResource)
+				if err != nil {
+					log.Error(err, "failed to update unseal status")
+					return ctrl.Result{}, err
+				} else {
+					return ctrl.Result{Requeue: true}, nil
+				}
+			} else {
+				// Set VaultStatus to unseal and update the status of resources in the cluster
+				err := r.Status().Update(context.TODO(), unsealResource)
+				if err != nil {
+					log.Error(err, "failed to update unseal status")
+					return ctrl.Result{}, err
+				} else {
+					return ctrl.Result{Requeue: true}, nil
+				}
+			}
 		}
 
 	case unsealerv1alpha1.StatusChanging:
