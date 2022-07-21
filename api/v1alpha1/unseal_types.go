@@ -56,8 +56,6 @@ type UnsealStatus struct {
 
 	// Status of the unseal
 	VaultStatus string `json:"vaultStatus,omitempty"`
-	// Last unseal job name
-	LastJobName string `json:"lastJobName,omitempty"`
 }
 
 //+kubebuilder:printcolumn:JSONPath=".status.vaultStatus",name=Vault Status,type=string
