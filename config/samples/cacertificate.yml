@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cacertificate
+  namespace: vault-unsealer-operator
+type: Opaque
+stringData:
+  ca.crt: |-
+    -----BEGIN CERTIFICATE-----
+    MIIDnzCCAoegAwIBAgIUIcQM3p/MbxbjTIIFUmt/UpARJlYwDQYJKoZIhvcNAQEL
+    BQAwEjEQMA4GA1UEAxMHcm9vdC1jYTAeFw0yMDEwMTExODA5MDZaFw0yODEwMDkx
+    ODA5MzZaMCgxJjAkBgNVBAMTHUFtb3llbCBJbnRlcm1lZGlhdGUgQXV0aG9yaXR5
+    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxzNEYl+CVVd4Mr2mzAI5
+    nd00KLaYnCqsd9+uMdZn72e9NMrOVEVTTtqdxzM7tb7O5e0RSlLQAg60NJOz9vhz
+    rA31OzZrp9qP/ubaP/acUltlFwDBsutpdC5TGez1CEuBvD454tNwmDnzpixVWCxx
+    4uBfSDfJZu/ci59WA11gSR1GgMH+rSj7IsVQJ8Gx5sPKPYDA00qIpZzMWxCHZ+Uf
+    qMjY2+ZeI6IiSK4znGUoWp0/bPyzEM0vV5Zqm0459QtNenf3V0JPKD2D6EM5NTKy
+    lyZURcTAA5csQrAnN4gvFM+v38kau+s8O9mLIWcvVrrBDZm5+IhIsqhY6m/l5PuG
+    vwIDAQABo4HWMIHTMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MB0G
+    A1UdDgQWBBSd/VWkk6bND2vqJUo6m7CERVi8NzAfBgNVHSMEGDAWgBSJhcGBmh1a
+    3qjaA0LrkgLuzWFg3zA8BggrBgEFBQcBAQQwMC4wLAYIKwYBBQUHMAKGIGh0dHBz
+    Oi8vc3J2LXZsdDAxOjgyMDAvdjEvcGtpL2NhMDIGA1UdHwQrMCkwJ6AloCOGIWh0
+    dHBzOi8vc3J2LXZsdDAxOjgyMDAvdjEvcGtpL2NybDANBgkqhkiG9w0BAQsFAAOC
+    AQEAXKxJVDOK6rpPuzjKHhnc1sy9NoRuaMuVhWWonMD7QncJO0z1KDh+C0J58xZO
+    FIABlvofO/lzgpK6EkLgRqBqmdRrduwrbZa/LfvyJeLaho9qjcxG5CdWw0SlBb/U
+    cIk+J5SRaoZipajjiq9XQS+iJuoxT/iD3gbOkk1s4QbEg4QiY3WmlGzGywMFmQ9h
+    GuA6jV76ugLvsrlcMK0A8gUIopDKrUtvmgPD11OufUJ4own8QsYz0m2v87xFd1t3
+    AU+wzg/sx8rL2lb0DZdIJ18HCC/RG8VUQfFzfcSSfamaoquTWu8JRwwU59pWwK67
+    nWpV0vb0qPhLiqq3tG4ctMgVdA==
+    -----END CERTIFICATE-----
