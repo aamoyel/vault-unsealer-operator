@@ -12,7 +12,8 @@ var httpClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
-func GetVaultStatus(vaultNodes []string) ([]string, error) {
+func GetVaultStatus(vaultNodes []string, insecure bool, caCert ...string) ([]string, error) {
+
 	var sealedNodes []string
 	for _, node := range vaultNodes {
 		client, err := vault.NewClient(&vault.Config{Address: node, HttpClient: httpClient})

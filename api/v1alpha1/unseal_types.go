@@ -44,6 +44,11 @@ type UnsealSpec struct {
 	// You need to create a secret with different key names for each unseal keys
 	//+kubebuilder:validation:Required
 	ThresholdKeysSecret string `json:"thresholdKeysSecret"`
+	// Secret name of your CA certificate. Important to request vault with tls on a pki
+	CaCertSecret string `json:"caCertSecret"`
+	// Boolean to define if you want to skip tls certificate validation. Set true of false (default is false)
+	//+kubebuilder:default:=false
+	TlsSkipVerify bool `json:"tlsSkipVerify"`
 	// Number of retry, default is 3
 	//+kubebuilder:default:=3
 	RetryCount int32 `json:"retryCount,omitempty"`
@@ -54,7 +59,7 @@ type UnsealStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Status of the unseal
+	// Status of the vault
 	VaultStatus string `json:"vaultStatus,omitempty"`
 }
 

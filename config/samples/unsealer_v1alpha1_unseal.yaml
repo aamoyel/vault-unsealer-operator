@@ -9,4 +9,9 @@ spec:
     - https://srv-vlt02.amoyel.loc:8200
     - https://srv-vlt03.amoyel.loc:8200
   thresholdKeysSecret: unsealkeys
+  # Optional, but important if you have internal pki for your vault certificate. Secret need to be in the same namespace as this resource
+  caCertSecret: cacertificate
+  # Optional, set this parameter to true if you want to skip tls certificate verification
+  tlsSkipVerify: false
+  # Optional
   retryCount: 3

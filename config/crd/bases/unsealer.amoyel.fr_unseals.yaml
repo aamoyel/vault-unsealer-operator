@@ -39,6 +39,10 @@ spec:
           spec:
             description: UnsealSpec defines the desired state of Unseal
             properties:
+              caCertSecret:
+                description: Secret name of your CA certificate. Important to request
+                  vault with tls on a pki
+                type: string
               retryCount:
                 default: 3
                 description: Number of retry, default is 3
@@ -49,6 +53,11 @@ spec:
                   unseal keys required to unseal you vault instance(s) You need to
                   create a secret with different key names for each unseal keys
                 type: string
+              tlsSkipVerify:
+                default: false
+                description: Boolean to define if you want to skip tls certificate
+                  validation. Set true of false (default is false)
+                type: boolean
               vaultNodes:
                 description: 'An array of vault instances to call api endpoints for
                   unseal, example for one instance: https://myvault01.domain.local:8200'
@@ -56,17 +65,16 @@ spec:
                   type: string
                 type: array
             required:
+            - caCertSecret
             - thresholdKeysSecret
+            - tlsSkipVerify
             - vaultNodes
             type: object
           status:
             description: UnsealStatus defines the observed state of Unseal
             properties:
-              lastJobName:
-                description: Last unseal job name
-                type: string
               vaultStatus:
-                description: Status of the unseal
+                description: Status of the vault
                 type: string
             type: object
         type: object
