@@ -65,9 +65,7 @@ spec:
                   type: string
                 type: array
             required:
-            - caCertSecret
             - thresholdKeysSecret
-            - tlsSkipVerify
             - vaultNodes
             type: object
           status:

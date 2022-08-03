@@ -45,10 +45,10 @@ type UnsealSpec struct {
 	//+kubebuilder:validation:Required
 	ThresholdKeysSecret string `json:"thresholdKeysSecret"`
 	// Secret name of your CA certificate. Important to request vault with tls on a pki
-	CaCertSecret string `json:"caCertSecret"`
+	CaCertSecret string `json:"caCertSecret,omitempty"`
 	// Boolean to define if you want to skip tls certificate validation. Set true of false (default is false)
 	//+kubebuilder:default:=false
-	TlsSkipVerify bool `json:"tlsSkipVerify"`
+	TlsSkipVerify bool `json:"tlsSkipVerify,omitempty"`
 	// Number of retry, default is 3
 	//+kubebuilder:default:=3
 	RetryCount int32 `json:"retryCount,omitempty"`

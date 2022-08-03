@@ -5,7 +5,7 @@ metadata:
   namespace: vault-unsealer-operator
 type: Opaque
 stringData:
-  ca.crt: |-
+  ca.crt: |
     -----BEGIN CERTIFICATE-----
     MIIDnzCCAoegAwIBAgIUIcQM3p/MbxbjTIIFUmt/UpARJlYwDQYJKoZIhvcNAQEL
     BQAwEjEQMA4GA1UEAxMHcm9vdC1jYTAeFw0yMDEwMTExODA5MDZaFw0yODEwMDkx

@@ -22,7 +22,6 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -83,15 +82,18 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	// Get CA certificate value if needed
 	var caCert string
-	if !unseal.Spec.TlsSkipVerify {
-		res := &corev1.Secret{}
-		// TODO get cacert value...
-
+	if !unseal.Spec.TlsSkipVerify && unseal.Spec.CaCertSecret != "" {
+		secret := corev1.Secret{}
+		sName := types.NamespacedName{
+			Namespace: unseal.Namespace,
+			Name:      unseal.Spec.CaCertSecret,
+		}
+		err := r.Get(ctx, sName, &secret)
 		if err != nil {
-			log.Error(err, "caCertSecret error")
+			log.Error(err, "Failed to get Job")
 			return ctrl.Result{}, err
 		}
-		fmt.Println(res)
+		caCert = string(secret.Data["ca.crt"])
 	}
 
 	// Switch implementing vault state logic
@@ -100,16 +102,17 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// Get Vault status and make decision based on number of sealed nodes
 		var sealedNodes []string
 		if unseal.Spec.TlsSkipVerify {
-			sealedNodes, err = vault.GetVaultStatus(unseal.Spec.VaultNodes, true)
+			sealedNodes, err = vault.GetVaultStatus(vault.VSParams{VaultNodes: unseal.Spec.VaultNodes, Insecure: true})
 			if err != nil {
 				log.Error(err, "Vault Status error")
 			}
 		} else {
-			sealedNodes, err = vault.GetVaultStatus(unseal.Spec.VaultNodes, false, caCert)
+			sealedNodes, err = vault.GetVaultStatus(vault.VSParams{VaultNodes: unseal.Spec.VaultNodes, Insecure: false, CaCert: caCert})
 			if err != nil {
 				log.Error(err, "Vault Status error")
 			}
 		}
+		fmt.Println(sealedNodes)
 		if len(sealedNodes) > 0 {
 			// Set VaultStatus to changing and update the status of resources in the cluster
 			unseal.Status.VaultStatus = unsealerv1alpha1.StatusChanging
