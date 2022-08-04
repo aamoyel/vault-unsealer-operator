@@ -21,10 +21,11 @@ import (
 )
 
 const (
-	// Pending: Switch to Running state
-	StatusPending = "PENDING"
-	// Running: Create deployment
-	StatusRunning  = "RUNNING"
+	// Unsealed: vault is unsealed, everything is ok -> check periodicaly if vault is unseal or not
+	StatusUnsealed = "UNSEALED"
+	// Changing: vault is in seal state -> launch unseal process
+	StatusChanging = "UNSEALING"
+	// Cleaning: remove job from cluster and wait for next seal
 	StatusCleaning = "CLEANING"
 )
 
@@ -36,10 +37,21 @@ type UnsealSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Container image to use
-	Image string `json:"image,omitempty"`
-	// Number of replicas
-	Replicas int32 `json:"replicas,omitempty"`
+	// An array of vault instances to call api endpoints for unseal, example for one instance: https://myvault01.domain.local:8200
+	//+kubebuilder:validation:Required
+	VaultNodes []string `json:"vaultNodes"`
+	// Secret name of your threshold keys. Threshold keys is unseal keys required to unseal you vault instance(s)
+	// You need to create a secret with different key names for each unseal keys
+	//+kubebuilder:validation:Required
+	ThresholdKeysSecret string `json:"thresholdKeysSecret"`
+	// Secret name of your CA certificate. Important to request vault with tls on a pki
+	CaCertSecret string `json:"caCertSecret,omitempty"`
+	// Boolean to define if you want to skip tls certificate validation. Set true of false (default is false)
+	//+kubebuilder:default:=false
+	TlsSkipVerify bool `json:"tlsSkipVerify,omitempty"`
+	// Number of retry, default is 3
+	//+kubebuilder:default:=3
+	RetryCount int32 `json:"retryCount,omitempty"`
 }
 
 // UnsealStatus defines the observed state of Unseal
@@ -47,12 +59,13 @@ type UnsealStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Status of the unseal
-	UnsealStatus string `json:"unsealStatus,omitempty"`
-	// Last Pod Name status
-	LastDeployName string `json:"lastDeployName,omitempty"`
+	// Status of the vault
+	VaultStatus string `json:"vaultStatus,omitempty"`
+	// Sealed nodes
+	SealedNodes []string `json:"sealedNodes,omitempty"`
 }
 
+//+kubebuilder:printcolumn:JSONPath=".status.vaultStatus",name=Vault Status,type=string
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
