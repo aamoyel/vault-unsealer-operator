@@ -18,7 +18,7 @@ package controllers
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -61,6 +61,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	// Create unseal var from unseal struct
 	var unseal = &unsealerv1alpha1.Unseal{}
+
 	// Fetch the unseal resource
 	err := r.Get(ctx, req.NamespacedName, unseal)
 	if err != nil {
@@ -100,20 +101,18 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	switch unseal.Status.VaultStatus {
 	case unsealerv1alpha1.StatusUnsealed:
 		// Get Vault status and make decision based on number of sealed nodes
-		var sealedNodes []string
 		if unseal.Spec.TlsSkipVerify {
-			sealedNodes, err = vault.GetVaultStatus(vault.VSParams{VaultNodes: unseal.Spec.VaultNodes, Insecure: true})
+			unseal.Status.SealedNodes, err = vault.GetVaultStatus(vault.VSParams{VaultNodes: unseal.Spec.VaultNodes, Insecure: true})
 			if err != nil {
 				log.Error(err, "Vault Status error")
 			}
 		} else {
-			sealedNodes, err = vault.GetVaultStatus(vault.VSParams{VaultNodes: unseal.Spec.VaultNodes, Insecure: false, CaCert: caCert})
+			unseal.Status.SealedNodes, err = vault.GetVaultStatus(vault.VSParams{VaultNodes: unseal.Spec.VaultNodes, Insecure: false, CaCert: caCert})
 			if err != nil {
 				log.Error(err, "Vault Status error")
 			}
 		}
-		fmt.Println(sealedNodes)
-		if len(sealedNodes) > 0 {
+		if len(unseal.Status.SealedNodes) > 0 {
 			// Set VaultStatus to changing and update the status of resources in the cluster
 			unseal.Status.VaultStatus = unsealerv1alpha1.StatusChanging
 			err := r.Status().Update(context.TODO(), unseal)
@@ -135,28 +134,33 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 
 	case unsealerv1alpha1.StatusChanging:
-		// Check if the job already exists, if not create a new one
-		res := &batchv1.Job{}
-		err := r.Get(ctx, types.NamespacedName{Name: unseal.Name, Namespace: unseal.Namespace}, res)
-		if err != nil && errors.IsNotFound(err) {
-			// Define a new job
-			job := r.createJob(unseal)
-			log.Info("Creating a new Job", "Job.Namespace", job.Namespace, "Job.Name", job.Name)
-			err = r.Create(ctx, job)
-			if err != nil {
-				log.Error(err, "Failed to create new Job", "Job.Namespace", job.Namespace, "Deployment.Name", job.Name)
+		// Create job for each sealed node
+		for i, _ := range unseal.Status.SealedNodes {
+			// Check if the job already exists, if not create a new one
+			res := &batchv1.Job{}
+			num := strconv.Itoa(i)
+			jobName := unseal.Name + "-" + num
+			err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: unseal.Namespace}, res)
+			if err != nil && errors.IsNotFound(err) {
+				// Define a new job
+				job := r.createJob(unseal, jobName)
+				log.Info("Creating a new Job", "Job.Namespace", job.Namespace, "Job.Name", jobName)
+				err = r.Create(ctx, job)
+				if err != nil {
+					log.Error(err, "Failed to create new Job", "Job.Namespace", job.Namespace, "Job.Name", jobName)
+					return ctrl.Result{}, err
+				}
+				// Job created successfully - return and requeue
+				return ctrl.Result{Requeue: true}, nil
+			} else if err != nil {
+				log.Error(err, "Failed to get Job")
 				return ctrl.Result{}, err
 			}
-			// Job created successfully - return and requeue
-			return ctrl.Result{Requeue: true}, nil
-		} else if err != nil {
-			log.Error(err, "Failed to get Job")
-			return ctrl.Result{}, err
 		}
 
 		// Update the Unseal status with the pod names
 		// List the pods for this unseal's job
-		podList := &corev1.PodList{}
+		/*podList := &corev1.PodList{}
 		listOpts := []client.ListOption{
 			client.InNamespace(unseal.Namespace),
 			client.MatchingLabels(getLabels(unseal)),
@@ -166,7 +170,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{}, err
 		}
 		podNames := getPodNames(podList.Items)
-		fmt.Println(podNames)
+		fmt.Println(podNames)*/
 
 		// Update VaultStatus if needed
 		/*if !reflect.DeepEqual(podNames, unseal.Status.VaultStatus) {
@@ -199,20 +203,20 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 // getLabels return labels depends on unseal resource name
-func getLabels(unseal *unsealerv1alpha1.Unseal) map[string]string {
+func getLabels(unseal *unsealerv1alpha1.Unseal, jobName string) map[string]string {
 	return map[string]string{
-		"app":     unseal.Name,
+		"app":     jobName,
 		"part-of": unseal.Name,
 	}
 }
 
 // createJob return a k8s job object depends on unseal resource name and namespace
-func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal) *batchv1.Job {
+func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName string) *batchv1.Job {
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      unseal.Name,
+			Name:      jobName,
 			Namespace: unseal.Namespace,
-			Labels:    getLabels(unseal),
+			Labels:    getLabels(unseal, jobName),
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit: &unseal.Spec.RetryCount,
@@ -236,13 +240,13 @@ func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal) *batchv1.J
 }
 
 // getPodNames returns the pod names of the array of pods passed in
-func getPodNames(pods []corev1.Pod) []string {
+/*func getPodNames(pods []corev1.Pod) []string {
 	var podNames []string
 	for _, pod := range pods {
 		podNames = append(podNames, pod.Name)
 	}
 	return podNames
-}
+}*/
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *UnsealReconciler) SetupWithManager(mgr ctrl.Manager) error {

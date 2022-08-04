@@ -61,6 +61,8 @@ type UnsealStatus struct {
 
 	// Status of the vault
 	VaultStatus string `json:"vaultStatus,omitempty"`
+	// Sealed nodes
+	SealedNodes []string `json:"sealedNodes,omitempty"`
 }
 
 //+kubebuilder:printcolumn:JSONPath=".status.vaultStatus",name=Vault Status,type=string

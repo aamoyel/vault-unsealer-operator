@@ -71,6 +71,11 @@ spec:
           status:
             description: UnsealStatus defines the observed state of Unseal
             properties:
+              sealedNodes:
+                description: Sealed nodes
+                items:
+                  type: string
+                type: array
               vaultStatus:
                 description: Status of the vault
                 type: string
