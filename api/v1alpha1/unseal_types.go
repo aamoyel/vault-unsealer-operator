@@ -24,7 +24,7 @@ const (
 	// Unsealed: vault is unsealed, everything is ok -> check periodicaly if vault is unseal or not
 	StatusUnsealed = "UNSEALED"
 	// Changing: vault is in seal state -> launch unseal process
-	StatusChanging = "UNSEALING"
+	StatusUnsealing = "UNSEALING"
 	// Cleaning: remove job from cluster and wait for next seal
 	StatusCleaning = "CLEANING"
 )

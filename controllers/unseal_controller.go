@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	unsealerv1alpha1 "github.com/aamoyel/vault-unsealer-operator/api/v1alpha1"
@@ -61,6 +62,9 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	// Create unseal var from unseal struct
 	var unseal = &unsealerv1alpha1.Unseal{}
+
+	// Create job object
+	job := &batchv1.Job{}
 
 	// Fetch the unseal resource
 	err := r.Get(ctx, req.NamespacedName, unseal)
@@ -113,14 +117,14 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 		}
 		if len(unseal.Status.SealedNodes) > 0 {
-			// Set VaultStatus to changing and update the status of resources in the cluster
-			unseal.Status.VaultStatus = unsealerv1alpha1.StatusChanging
+			// Set VaultStatus to unsealing and update the status of resources in the cluster
+			unseal.Status.VaultStatus = unsealerv1alpha1.StatusUnsealing
 			err := r.Status().Update(context.TODO(), unseal)
 			if err != nil {
 				log.Error(err, "failed to update unseal status")
 				return ctrl.Result{}, err
 			} else {
-				return ctrl.Result{Requeue: true}, nil
+				return ctrl.Result{RequeueAfter: 10}, nil
 			}
 		} else {
 			// Set VaultStatus to unseal and update the status of resources in the cluster
@@ -129,77 +133,101 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				log.Error(err, "failed to update unseal status")
 				return ctrl.Result{}, err
 			} else {
-				return ctrl.Result{Requeue: true}, nil
+				return ctrl.Result{RequeueAfter: 10}, nil
 			}
 		}
 
-	case unsealerv1alpha1.StatusChanging:
+	case unsealerv1alpha1.StatusUnsealing:
 		// Create job for each sealed node
-		for i, _ := range unseal.Status.SealedNodes {
+		for i, nodeName := range unseal.Status.SealedNodes {
 			// Check if the job already exists, if not create a new one
-			res := &batchv1.Job{}
 			num := strconv.Itoa(i)
 			jobName := unseal.Name + "-" + num
-			err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: unseal.Namespace}, res)
+			err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: unseal.Namespace}, job)
 			if err != nil && errors.IsNotFound(err) {
 				// Define a new job
-				job := r.createJob(unseal, jobName)
+				job := r.createJob(unseal, jobName, nodeName, unseal.Spec.CaCertSecret, unseal.Spec.TlsSkipVerify)
+				// Establish the parent-child relationship between unseal resource and the job
+				if err = controllerutil.SetControllerReference(unseal, job, r.Scheme); err != nil {
+					log.Error(err, "Failed to set deployment controller reference")
+					return ctrl.Result{}, err
+				}
+				// Create the job
 				log.Info("Creating a new Job", "Job.Namespace", job.Namespace, "Job.Name", jobName)
 				err = r.Create(ctx, job)
 				if err != nil {
-					log.Error(err, "Failed to create new Job", "Job.Namespace", job.Namespace, "Job.Name", jobName)
+					log.Error(err, "Failed to create new Job", "Job Namespace", job.Namespace, "Job Name", jobName)
 					return ctrl.Result{}, err
 				}
 				// Job created successfully - return and requeue
-				return ctrl.Result{Requeue: true}, nil
+				return ctrl.Result{RequeueAfter: 10}, nil
 			} else if err != nil {
 				log.Error(err, "Failed to get Job")
 				return ctrl.Result{}, err
 			}
-		}
 
-		// Update the Unseal status with the pod names
-		// List the pods for this unseal's job
-		/*podList := &corev1.PodList{}
-		listOpts := []client.ListOption{
-			client.InNamespace(unseal.Namespace),
-			client.MatchingLabels(getLabels(unseal)),
-		}
-		if err = r.List(ctx, podList, listOpts...); err != nil {
-			log.Error(err, "Failed to list pods", "Job.Namespace", unseal.Namespace, "Job.Name", unseal.Name)
-			return ctrl.Result{}, err
-		}
-		podNames := getPodNames(podList.Items)
-		fmt.Println(podNames)*/
-
-		// Update VaultStatus if needed
-		/*if !reflect.DeepEqual(podNames, unseal.Status.VaultStatus) {
-			unseal.Status.VaultStatus = podNames
-			err := r.Status().Update(ctx, unseal)
+			// Check Job status
+			err = r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: unseal.Namespace}, job)
 			if err != nil {
-				log.Error(err, "Failed to update Memcached status")
+				log.Error(err, "Failed to get Job")
 				return ctrl.Result{}, err
 			}
-		}*/
-
-	/*case unsealerv1alpha1.StatusCleaning:
-	res := &batchv1.Job{}
-	// Remove job if status is cleaning
-	err := r.Client.Get(ctx, client.ObjectKey{Namespace: unsealResource.Namespace, Name: unsealResource.Status.LastJobName}, res)
-	if err == nil && unsealResource.ObjectMeta.DeletionTimestamp.IsZero() {
-		err = r.Delete(context.TODO(), query)
-		if err != nil {
-			log.Error(err, "Failed to remove old job", unsealResource.ObjectMeta.Name)
-			return ctrl.Result{}, err
-		} else {
-			log.Info("Old job removed", unsealResource.ObjectMeta.Name)
-			return ctrl.Result{Requeue: true}, nil
+			succeeded := job.Status.Succeeded
+			failed := job.Status.Failed
+			if succeeded == 1 {
+				log.Info("Job Succeeded", "Node Name", nodeName, "Job Name", jobName)
+				// Set VaultStatus to cleaning and update the status of resources in the cluster
+				unseal.Status.VaultStatus = unsealerv1alpha1.StatusCleaning
+				err := r.Status().Update(context.TODO(), unseal)
+				if err != nil {
+					log.Error(err, "failed to update unseal status")
+					return ctrl.Result{}, err
+				} else {
+					return ctrl.Result{RequeueAfter: 10}, nil
+				}
+			} else if failed == 1 {
+				log.Info("Job Failed, please check your configuration", "Node Name", nodeName, "Job Name", jobName, "Backoff Limit", unseal.Spec.RetryCount)
+				// Set VaultStatus to cleaning and update the status of resources in the cluster
+				unseal.Status.VaultStatus = unsealerv1alpha1.StatusCleaning
+				err := r.Status().Update(context.TODO(), unseal)
+				if err != nil {
+					log.Error(err, "failed to update unseal status")
+					return ctrl.Result{}, err
+				} else {
+					return ctrl.Result{RequeueAfter: 10}, nil
+				}
+			}
 		}
-	}*/
+
+	case unsealerv1alpha1.StatusCleaning:
+		// Remove job if status is cleaning
+		for i := range unseal.Status.SealedNodes {
+			num := strconv.Itoa(i)
+			jobName := unseal.Name + "-" + num
+			err := r.Client.Get(ctx, client.ObjectKey{Name: jobName, Namespace: unseal.Namespace}, job)
+			if err == nil && unseal.ObjectMeta.DeletionTimestamp.IsZero() {
+				err = r.Delete(context.TODO(), job, client.PropagationPolicy(metav1.DeletePropagationBackground))
+				if err != nil {
+					log.Error(err, "Failed to remove old job", "Job Name", jobName)
+					return ctrl.Result{}, err
+				} else {
+					log.Info("Old job removed", "Job Name", jobName)
+					// Set VaultStatus to cleaning and update the status of resources in the cluster
+					unseal.Status.VaultStatus = unsealerv1alpha1.StatusUnsealed
+					err := r.Status().Update(context.TODO(), unseal)
+					if err != nil {
+						log.Error(err, "failed to update unseal status")
+						return ctrl.Result{}, err
+					} else {
+						return ctrl.Result{RequeueAfter: 10}, nil
+					}
+				}
+			}
+		}
 	default:
 	}
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: 10}, nil
 }
 
 // getLabels return labels depends on unseal resource name
@@ -211,42 +239,127 @@ func getLabels(unseal *unsealerv1alpha1.Unseal, jobName string) map[string]strin
 }
 
 // createJob return a k8s job object depends on unseal resource name and namespace
-func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName string) *batchv1.Job {
-	return &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      jobName,
-			Namespace: unseal.Namespace,
-			Labels:    getLabels(unseal, jobName),
-		},
-		Spec: batchv1.JobSpec{
-			BackoffLimit: &unseal.Spec.RetryCount,
-			Template: corev1.PodTemplateSpec{
-				Spec: corev1.PodSpec{
-					RestartPolicy: "OnFailure",
-					Containers: []corev1.Container{
-						{
-							Name:  "unsealer",
-							Image: "nginx:1.23.0-alpine",
-							Command: []string{
-								"sleep",
-								"30",
+func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName string, nodeName string, secretName string, insecure bool) *batchv1.Job {
+	var image string = "vault:1.9.8"
+	if insecure {
+		return &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      jobName,
+				Namespace: unseal.Namespace,
+				Labels:    getLabels(unseal, jobName),
+			},
+			Spec: batchv1.JobSpec{
+				BackoffLimit: &unseal.Spec.RetryCount,
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						RestartPolicy: "OnFailure",
+						Containers: []corev1.Container{
+							{
+								Name:  "unsealer",
+								Image: image,
+								Command: []string{
+									"vault", "operator", "unseal",
+								},
+								Env: []corev1.EnvVar{
+									{
+										Name:  "VAULT_ADDR",
+										Value: nodeName,
+									},
+									{
+										Name:  "VAULT_SKIP_VERIFY",
+										Value: "true",
+									},
+								},
 							},
 						},
 					},
 				},
 			},
-		},
+		}
+	} else if len(secretName) == 0 {
+		return &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      jobName,
+				Namespace: unseal.Namespace,
+				Labels:    getLabels(unseal, jobName),
+			},
+			Spec: batchv1.JobSpec{
+				BackoffLimit: &unseal.Spec.RetryCount,
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						RestartPolicy: "OnFailure",
+						Containers: []corev1.Container{
+							{
+								Name:  "unsealer",
+								Image: image,
+								Command: []string{
+									"vault", "operator", "unseal",
+								},
+								Env: []corev1.EnvVar{
+									{
+										Name:  "VAULT_ADDR",
+										Value: nodeName,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+	} else {
+		return &batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      jobName,
+				Namespace: unseal.Namespace,
+				Labels:    getLabels(unseal, jobName),
+			},
+			Spec: batchv1.JobSpec{
+				BackoffLimit: &unseal.Spec.RetryCount,
+				Template: corev1.PodTemplateSpec{
+					Spec: corev1.PodSpec{
+						RestartPolicy: "OnFailure",
+						Containers: []corev1.Container{
+							{
+								Name:  "unsealer",
+								Image: image,
+								Command: []string{
+									"vault", "operator", "unseal",
+								},
+								Env: []corev1.EnvVar{
+									{
+										Name:  "VAULT_ADDR",
+										Value: nodeName,
+									},
+									{
+										Name:  "VAULT_CAPATH",
+										Value: "/secrets/cacerts/ca.crt",
+									},
+								},
+								VolumeMounts: []corev1.VolumeMount{
+									{
+										Name:      "cacert",
+										MountPath: "/secrets/cacerts",
+									},
+								},
+							},
+						},
+						Volumes: []corev1.Volume{
+							{
+								Name: "cacert",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: secretName,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
 	}
 }
-
-// getPodNames returns the pod names of the array of pods passed in
-/*func getPodNames(pods []corev1.Pod) []string {
-	var podNames []string
-	for _, pod := range pods {
-		podNames = append(podNames, pod.Name)
-	}
-	return podNames
-}*/
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *UnsealReconciler) SetupWithManager(mgr ctrl.Manager) error {
