@@ -146,7 +146,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			err := r.Get(ctx, types.NamespacedName{Name: jobName, Namespace: unseal.Namespace}, job)
 			if err != nil && errors.IsNotFound(err) {
 				// Define a new job
-				job := r.createJob(unseal, jobName, nodeName, unseal.Spec.CaCertSecret, unseal.Spec.TlsSkipVerify)
+				job := r.createJob(unseal, jobName, nodeName, unseal.Spec.ThresholdKeysSecret, unseal.Spec.CaCertSecret, unseal.Spec.TlsSkipVerify)
 				// Establish the parent-child relationship between unseal resource and the job
 				if err = controllerutil.SetControllerReference(unseal, job, r.Scheme); err != nil {
 					log.Error(err, "Failed to set deployment controller reference")
@@ -176,7 +176,6 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			failed := job.Status.Failed
 			if succeeded == 1 {
 				log.Info("Job Succeeded", "Node Name", nodeName, "Job Name", jobName)
-				// Set VaultStatus to cleaning and update the status of resources in the cluster
 				unseal.Status.VaultStatus = unsealerv1alpha1.StatusCleaning
 				err := r.Status().Update(context.TODO(), unseal)
 				if err != nil {
@@ -239,8 +238,9 @@ func getLabels(unseal *unsealerv1alpha1.Unseal, jobName string) map[string]strin
 }
 
 // createJob return a k8s job object depends on unseal resource name and namespace
-func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName string, nodeName string, secretName string, insecure bool) *batchv1.Job {
-	var image string = "vault:1.9.8"
+func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName string, nodeName string, thresholdKeysSecret string, caSecretName string, insecure bool) *batchv1.Job {
+	var image string = "reg.amoyel.fr/aamoyel/vault-unsealer:1.0"
+	var keysPath string = "/secrets/keys"
 	if insecure {
 		return &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
@@ -255,11 +255,9 @@ func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName st
 						RestartPolicy: "OnFailure",
 						Containers: []corev1.Container{
 							{
-								Name:  "unsealer",
-								Image: image,
-								Command: []string{
-									"vault", "operator", "unseal",
-								},
+								Name:            "unsealer",
+								Image:           image,
+								ImagePullPolicy: "Always",
 								Env: []corev1.EnvVar{
 									{
 										Name:  "VAULT_ADDR",
@@ -269,6 +267,26 @@ func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName st
 										Name:  "VAULT_SKIP_VERIFY",
 										Value: "true",
 									},
+									{
+										Name:  "UNSEALER_SECRET_PATH",
+										Value: keysPath,
+									},
+								},
+								VolumeMounts: []corev1.VolumeMount{
+									{
+										Name:      "threshold-keys",
+										MountPath: keysPath,
+									},
+								},
+							},
+						},
+						Volumes: []corev1.Volume{
+							{
+								Name: "threshold-keys",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: thresholdKeysSecret,
+									},
 								},
 							},
 						},
@@ -276,7 +294,7 @@ func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName st
 				},
 			},
 		}
-	} else if len(secretName) == 0 {
+	} else if len(caSecretName) == 0 {
 		return &batchv1.Job{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      jobName,
@@ -290,15 +308,33 @@ func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName st
 						RestartPolicy: "OnFailure",
 						Containers: []corev1.Container{
 							{
-								Name:  "unsealer",
-								Image: image,
-								Command: []string{
-									"vault", "operator", "unseal",
-								},
+								Name:            "unsealer",
+								Image:           image,
+								ImagePullPolicy: "Always",
 								Env: []corev1.EnvVar{
 									{
 										Name:  "VAULT_ADDR",
 										Value: nodeName,
+									},
+									{
+										Name:  "UNSEALER_SECRET_PATH",
+										Value: keysPath,
+									},
+								},
+								VolumeMounts: []corev1.VolumeMount{
+									{
+										Name:      "threshold-keys",
+										MountPath: keysPath,
+									},
+								},
+							},
+						},
+						Volumes: []corev1.Volume{
+							{
+								Name: "threshold-keys",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: thresholdKeysSecret,
 									},
 								},
 							},
@@ -321,11 +357,9 @@ func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName st
 						RestartPolicy: "OnFailure",
 						Containers: []corev1.Container{
 							{
-								Name:  "unsealer",
-								Image: image,
-								Command: []string{
-									"vault", "operator", "unseal",
-								},
+								Name:            "unsealer",
+								Image:           image,
+								ImagePullPolicy: "Always",
 								Env: []corev1.EnvVar{
 									{
 										Name:  "VAULT_ADDR",
@@ -335,11 +369,19 @@ func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName st
 										Name:  "VAULT_CAPATH",
 										Value: "/secrets/cacerts/ca.crt",
 									},
+									{
+										Name:  "UNSEALER_SECRET_PATH",
+										Value: keysPath,
+									},
 								},
 								VolumeMounts: []corev1.VolumeMount{
 									{
 										Name:      "cacert",
 										MountPath: "/secrets/cacerts",
+									},
+									{
+										Name:      "threshold-keys",
+										MountPath: keysPath,
 									},
 								},
 							},
@@ -349,7 +391,15 @@ func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName st
 								Name: "cacert",
 								VolumeSource: corev1.VolumeSource{
 									Secret: &corev1.SecretVolumeSource{
-										SecretName: secretName,
+										SecretName: caSecretName,
+									},
+								},
+							},
+							{
+								Name: "threshold-keys",
+								VolumeSource: corev1.VolumeSource{
+									Secret: &corev1.SecretVolumeSource{
+										SecretName: thresholdKeysSecret,
 									},
 								},
 							},
