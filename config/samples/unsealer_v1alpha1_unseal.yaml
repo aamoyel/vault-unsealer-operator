@@ -2,13 +2,13 @@ apiVersion: unsealer.amoyel.fr/v1alpha1
 kind: Unseal
 metadata:
   name: unseal-sample
-  namespace: vault-unsealer-operator
+  namespace: vault-unsealer-operator-system
 spec:
   vaultNodes:
     - https://srv-vlt01.amoyel.loc:8200
     - https://srv-vlt02.amoyel.loc:8200
     - https://srv-vlt03.amoyel.loc:8200
-  thresholdKeysSecret: unsealkeys
+  thresholdKeysSecret: thresholdkeys
   # Optional, but important if you have internal pki for your vault certificate. Secret need to be in the same namespace as this resource
   caCertSecret: cacertificate
   # Optional, set this parameter to true if you want to skip tls certificate verification
