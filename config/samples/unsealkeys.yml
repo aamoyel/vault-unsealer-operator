@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: unsealkeys
+  namespace: vault-unsealer-operator
+type: Opaque
+stringData:
+  key1: mykey1
+  key2: mykey2
