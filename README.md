@@ -76,7 +76,7 @@ You need to have :
       key2: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
    ```
    Apply this file with `kubectl`
-2.  (Optionnal) If you have your own PKI and CA certificate, you can create a secret (example file [here](https://github.com/aamoyel/vault-unsealer-operator/blob/main/config/samples/cacertificate.yml)) like that:
+2. (Optionnal) If you have your own PKI and CA certificate, you can create a secret (example file [here](https://github.com/aamoyel/vault-unsealer-operator/blob/main/config/samples/cacertificate.yml)) like that:
    ```yaml
     apiVersion: v1
     kind: Secret
@@ -116,7 +116,7 @@ You need to have :
 
 <!-- Contribute -->
 ## Contribute
-You can create Issues on this project if you have any problems or suggestions.
+You can create issues on this project if you have any problems or suggestions.
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
