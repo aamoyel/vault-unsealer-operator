@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"strconv"
+	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -34,6 +35,8 @@ import (
 	unsealerv1alpha1 "github.com/aamoyel/vault-unsealer-operator/api/v1alpha1"
 	"github.com/aamoyel/vault-unsealer-operator/pkg/vault"
 )
+
+const requeueTime = 5 * time.Second
 
 // UnsealReconciler reconciles a Unseal object
 type UnsealReconciler struct {
@@ -124,7 +127,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				log.Error(err, "failed to update unseal status")
 				return ctrl.Result{}, err
 			} else {
-				return ctrl.Result{RequeueAfter: 10}, nil
+				return ctrl.Result{RequeueAfter: requeueTime}, nil
 			}
 		} else {
 			// Set VaultStatus to unseal and update the status of resources in the cluster
@@ -133,7 +136,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				log.Error(err, "failed to update unseal status")
 				return ctrl.Result{}, err
 			} else {
-				return ctrl.Result{RequeueAfter: 10}, nil
+				return ctrl.Result{RequeueAfter: requeueTime}, nil
 			}
 		}
 
@@ -160,7 +163,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					return ctrl.Result{}, err
 				}
 				// Job created successfully - return and requeue
-				return ctrl.Result{RequeueAfter: 10}, nil
+				return ctrl.Result{RequeueAfter: requeueTime}, nil
 			} else if err != nil {
 				log.Error(err, "Failed to get Job")
 				return ctrl.Result{}, err
@@ -182,7 +185,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					log.Error(err, "failed to update unseal status")
 					return ctrl.Result{}, err
 				} else {
-					return ctrl.Result{RequeueAfter: 10}, nil
+					return ctrl.Result{RequeueAfter: requeueTime}, nil
 				}
 			} else if failed == 1 {
 				log.Info("Job Failed, please check your configuration", "Node Name", nodeName, "Job Name", jobName, "Backoff Limit", unseal.Spec.RetryCount)
@@ -193,7 +196,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					log.Error(err, "failed to update unseal status")
 					return ctrl.Result{}, err
 				} else {
-					return ctrl.Result{RequeueAfter: 10}, nil
+					return ctrl.Result{RequeueAfter: requeueTime}, nil
 				}
 			}
 		}
@@ -218,7 +221,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 						log.Error(err, "failed to update unseal status")
 						return ctrl.Result{}, err
 					} else {
-						return ctrl.Result{RequeueAfter: 10}, nil
+						return ctrl.Result{RequeueAfter: requeueTime}, nil
 					}
 				}
 			}
@@ -226,7 +229,7 @@ func (r *UnsealReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	default:
 	}
 
-	return ctrl.Result{RequeueAfter: 10}, nil
+	return ctrl.Result{RequeueAfter: requeueTime}, nil
 }
 
 // getLabels return labels depends on unseal resource name
@@ -239,7 +242,7 @@ func getLabels(unseal *unsealerv1alpha1.Unseal, jobName string) map[string]strin
 
 // createJob return a k8s job object depends on unseal resource name and namespace
 func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName string, nodeName string, thresholdKeysSecret string, caSecretName string, insecure bool) *batchv1.Job {
-	var image string = "reg.amoyel.fr/aamoyel/vault-unsealer:1.0"
+	var image string = "gcr.io/aamoyel/vault-unsealer:v1.0.0"
 	var keysPath string = "/secrets/keys"
 	if insecure {
 		return &batchv1.Job{
