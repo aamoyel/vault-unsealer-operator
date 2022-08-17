@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: cacertificate
-  namespace: vault-unsealer-operator
+  namespace: vault-unsealer-operator-system
 type: Opaque
 stringData:
   ca.crt: |
