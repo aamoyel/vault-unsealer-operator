@@ -1,0 +1,382 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: vault-unsealer-operator-system
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.9.0
+  creationTimestamp: null
+  name: unseals.unsealer.amoyel.fr
+spec:
+  group: unsealer.amoyel.fr
+  names:
+    kind: Unseal
+    listKind: UnsealList
+    plural: unseals
+    singular: unseal
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.vaultStatus
+      name: Vault Status
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Unseal is the Schema for the unseals API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: UnsealSpec defines the desired state of Unseal
+            properties:
+              caCertSecret:
+                description: Secret name of your CA certificate. Important to request vault with tls on a pki
+                type: string
+              retryCount:
+                default: 3
+                description: Number of retry, default is 3
+                format: int32
+                type: integer
+              thresholdKeysSecret:
+                description: Secret name of your threshold keys. Threshold keys is unseal keys required to unseal you vault instance(s) You need to create a secret with different key names for each unseal keys
+                type: string
+              tlsSkipVerify:
+                default: false
+                description: Boolean to define if you want to skip tls certificate validation. Set true of false (default is false)
+                type: boolean
+              vaultNodes:
+                description: 'An array of vault instances to call api endpoints for unseal, example for one instance: https://myvault01.domain.local:8200'
+                items:
+                  type: string
+                type: array
+            required:
+            - thresholdKeysSecret
+            - vaultNodes
+            type: object
+          status:
+            description: UnsealStatus defines the observed state of Unseal
+            properties:
+              sealedNodes:
+                description: Sealed nodes
+                items:
+                  type: string
+                type: array
+              vaultStatus:
+                description: Status of the vault
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-unsealer-operator-controller-manager
+  namespace: vault-unsealer-operator-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault-unsealer-operator-leader-election-role
+  namespace: vault-unsealer-operator-system
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: vault-unsealer-operator-manager-role
+rules:
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - unsealer.amoyel.fr
+  resources:
+  - unseals
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - unsealer.amoyel.fr
+  resources:
+  - unseals/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - unsealer.amoyel.fr
+  resources:
+  - unseals/status
+  verbs:
+  - get
+  - patch
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vault-unsealer-operator-metrics-reader
+rules:
+- nonResourceURLs:
+  - /metrics
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: vault-unsealer-operator-proxy-role
+rules:
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault-unsealer-operator-leader-election-rolebinding
+  namespace: vault-unsealer-operator-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault-unsealer-operator-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: vault-unsealer-operator-controller-manager
+  namespace: vault-unsealer-operator-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-unsealer-operator-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vault-unsealer-operator-manager-role
+subjects:
+- kind: ServiceAccount
+  name: vault-unsealer-operator-controller-manager
+  namespace: vault-unsealer-operator-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-unsealer-operator-proxy-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: vault-unsealer-operator-proxy-role
+subjects:
+- kind: ServiceAccount
+  name: vault-unsealer-operator-controller-manager
+  namespace: vault-unsealer-operator-system
+---
+apiVersion: v1
+data:
+  controller_manager_config.yaml: |
+    apiVersion: controller-runtime.sigs.k8s.io/v1alpha1
+    kind: ControllerManagerConfig
+    health:
+      healthProbeBindAddress: :8081
+    metrics:
+      bindAddress: 127.0.0.1:8080
+    webhook:
+      port: 9443
+    leaderElection:
+      leaderElect: true
+      resourceName: a681d304.amoyel.fr
+    # leaderElectionReleaseOnCancel defines if the leader should step down volume
+    # when the Manager ends. This requires the binary to immediately end when the
+    # Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
+    # speeds up voluntary leader transitions as the new leader don't have to wait
+    # LeaseDuration time first.
+    # In the default scaffold provided, the program ends immediately after
+    # the manager stops, so would be fine to enable this option. However,
+    # if you are doing or is intended to do any operation such as perform cleanups
+    # after the manager stops then its usage might be unsafe.
+    # leaderElectionReleaseOnCancel: true
+kind: ConfigMap
+metadata:
+  name: vault-unsealer-operator-manager-config
+  namespace: vault-unsealer-operator-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: vault-unsealer-operator-controller-manager-metrics-service
+  namespace: vault-unsealer-operator-system
+spec:
+  ports:
+  - name: https
+    port: 8443
+    protocol: TCP
+    targetPort: https
+  selector:
+    control-plane: controller-manager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    control-plane: controller-manager
+  name: vault-unsealer-operator-controller-manager
+  namespace: vault-unsealer-operator-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        control-plane: controller-manager
+    spec:
+      containers:
+      - args:
+        - --secure-listen-address=0.0.0.0:8443
+        - --upstream=http://127.0.0.1:8080/
+        - --logtostderr=true
+        - --v=0
+        image: gcr.io/kubebuilder/kube-rbac-proxy:v0.12.0
+        name: kube-rbac-proxy
+        ports:
+        - containerPort: 8443
+          name: https
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 5m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      - args:
+        - --health-probe-bind-address=:8081
+        - --metrics-bind-address=127.0.0.1:8080
+        - --leader-elect
+        command:
+        - /manager
+        image: gcr.io/aamoyel/vault-unsealer-operator:v1.0.0
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        name: manager
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      securityContext:
+        runAsNonRoot: true
+      serviceAccountName: vault-unsealer-operator-controller-manager
+      terminationGracePeriodSeconds: 10
