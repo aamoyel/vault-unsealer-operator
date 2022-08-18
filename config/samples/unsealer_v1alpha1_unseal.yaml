@@ -5,9 +5,9 @@ metadata:
   namespace: vault-unsealer-operator-system
 spec:
   vaultNodes:
-    - https://srv-vlt01.amoyel.loc:8200
-    - https://srv-vlt02.amoyel.loc:8200
-    - https://srv-vlt03.amoyel.loc:8200
+    - https://vault-cluster-node-url-1:8200
+    - https://vault-cluster-node-url-2:8200
+    - https://vault-cluster-node-url-3:8200
   thresholdKeysSecret: thresholdkeys
   # Optional, but important if you have internal pki for your vault certificate. Secret need to be in the same namespace as this resource
   caCertSecret: cacertificate
