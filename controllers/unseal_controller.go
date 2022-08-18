@@ -244,173 +244,136 @@ func getLabels(unseal *unsealerv1alpha1.Unseal, jobName string) map[string]strin
 func (r *UnsealReconciler) createJob(unseal *unsealerv1alpha1.Unseal, jobName string, nodeName string, thresholdKeysSecret string, caSecretName string, insecure bool) *batchv1.Job {
 	var image string = "gcr.io/aamoyel/vault-unsealer:v1.0.0"
 	var keysPath string = "/secrets/keys"
+
+	// Job Metadata
+	jobMeta := metav1.ObjectMeta{
+		Name:      jobName,
+		Namespace: unseal.Namespace,
+		Labels:    getLabels(unseal, jobName),
+	}
+
+	// Pod Volume Mounts
+	podMounts := []corev1.VolumeMount{
+		{
+			Name:      "threshold-keys",
+			MountPath: keysPath,
+		},
+	}
+
+	// Pod Volumes
+	podVolumes := []corev1.Volume{
+		{
+			Name: "threshold-keys",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: thresholdKeysSecret,
+				},
+			},
+		},
+	}
+
+	// Pod Env Vars
+	podEnv := []corev1.EnvVar{
+		{
+			Name:  "VAULT_ADDR",
+			Value: nodeName,
+		},
+		{
+			Name:  "UNSEALER_SECRET_PATH",
+			Value: keysPath,
+		},
+	}
+
+	// Condition for insecure mode or CA Cert usage
 	if insecure {
-		return &batchv1.Job{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      jobName,
-				Namespace: unseal.Namespace,
-				Labels:    getLabels(unseal, jobName),
+		podEnv = []corev1.EnvVar{
+			{
+				Name:  "VAULT_ADDR",
+				Value: nodeName,
 			},
-			Spec: batchv1.JobSpec{
-				BackoffLimit: &unseal.Spec.RetryCount,
-				Template: corev1.PodTemplateSpec{
-					Spec: corev1.PodSpec{
-						RestartPolicy: "OnFailure",
-						Containers: []corev1.Container{
-							{
-								Name:            "unsealer",
-								Image:           image,
-								ImagePullPolicy: "Always",
-								Env: []corev1.EnvVar{
-									{
-										Name:  "VAULT_ADDR",
-										Value: nodeName,
-									},
-									{
-										Name:  "VAULT_SKIP_VERIFY",
-										Value: "true",
-									},
-									{
-										Name:  "UNSEALER_SECRET_PATH",
-										Value: keysPath,
-									},
-								},
-								VolumeMounts: []corev1.VolumeMount{
-									{
-										Name:      "threshold-keys",
-										MountPath: keysPath,
-									},
-								},
-							},
-						},
-						Volumes: []corev1.Volume{
-							{
-								Name: "threshold-keys",
-								VolumeSource: corev1.VolumeSource{
-									Secret: &corev1.SecretVolumeSource{
-										SecretName: thresholdKeysSecret,
-									},
-								},
-							},
-						},
+			{
+				Name:  "UNSEALER_SECRET_PATH",
+				Value: keysPath,
+			},
+			{
+				Name:  "VAULT_SKIP_VERIFY",
+				Value: "true",
+			},
+		}
+	} else if len(caSecretName) > 0 {
+		podEnv = []corev1.EnvVar{
+			{
+				Name:  "VAULT_ADDR",
+				Value: nodeName,
+			},
+			{
+				Name:  "UNSEALER_SECRET_PATH",
+				Value: keysPath,
+			},
+			{
+				Name:  "VAULT_CAPATH",
+				Value: "/secrets/cacerts/ca.crt",
+			},
+		}
+
+		podMounts = []corev1.VolumeMount{
+			{
+				Name:      "threshold-keys",
+				MountPath: keysPath,
+			},
+			{
+				Name:      "cacert",
+				MountPath: "/secrets/cacerts",
+			},
+		}
+
+		podVolumes = []corev1.Volume{
+			{
+				Name: "threshold-keys",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: thresholdKeysSecret,
+					},
+				},
+			},
+			{
+				Name: "cacert",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: caSecretName,
 					},
 				},
 			},
 		}
-	} else if len(caSecretName) == 0 {
-		return &batchv1.Job{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      jobName,
-				Namespace: unseal.Namespace,
-				Labels:    getLabels(unseal, jobName),
+	}
+
+	// Pod Specs
+	podSpec := corev1.PodSpec{
+		RestartPolicy: "OnFailure",
+		Containers: []corev1.Container{
+			{
+				Name:            "unsealer",
+				Image:           image,
+				ImagePullPolicy: "Always",
+				Env:             podEnv,
+				VolumeMounts:    podMounts,
 			},
-			Spec: batchv1.JobSpec{
-				BackoffLimit: &unseal.Spec.RetryCount,
-				Template: corev1.PodTemplateSpec{
-					Spec: corev1.PodSpec{
-						RestartPolicy: "OnFailure",
-						Containers: []corev1.Container{
-							{
-								Name:            "unsealer",
-								Image:           image,
-								ImagePullPolicy: "Always",
-								Env: []corev1.EnvVar{
-									{
-										Name:  "VAULT_ADDR",
-										Value: nodeName,
-									},
-									{
-										Name:  "UNSEALER_SECRET_PATH",
-										Value: keysPath,
-									},
-								},
-								VolumeMounts: []corev1.VolumeMount{
-									{
-										Name:      "threshold-keys",
-										MountPath: keysPath,
-									},
-								},
-							},
-						},
-						Volumes: []corev1.Volume{
-							{
-								Name: "threshold-keys",
-								VolumeSource: corev1.VolumeSource{
-									Secret: &corev1.SecretVolumeSource{
-										SecretName: thresholdKeysSecret,
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		}
-	} else {
-		return &batchv1.Job{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      jobName,
-				Namespace: unseal.Namespace,
-				Labels:    getLabels(unseal, jobName),
-			},
-			Spec: batchv1.JobSpec{
-				BackoffLimit: &unseal.Spec.RetryCount,
-				Template: corev1.PodTemplateSpec{
-					Spec: corev1.PodSpec{
-						RestartPolicy: "OnFailure",
-						Containers: []corev1.Container{
-							{
-								Name:            "unsealer",
-								Image:           image,
-								ImagePullPolicy: "Always",
-								Env: []corev1.EnvVar{
-									{
-										Name:  "VAULT_ADDR",
-										Value: nodeName,
-									},
-									{
-										Name:  "VAULT_CAPATH",
-										Value: "/secrets/cacerts/ca.crt",
-									},
-									{
-										Name:  "UNSEALER_SECRET_PATH",
-										Value: keysPath,
-									},
-								},
-								VolumeMounts: []corev1.VolumeMount{
-									{
-										Name:      "cacert",
-										MountPath: "/secrets/cacerts",
-									},
-									{
-										Name:      "threshold-keys",
-										MountPath: keysPath,
-									},
-								},
-							},
-						},
-						Volumes: []corev1.Volume{
-							{
-								Name: "cacert",
-								VolumeSource: corev1.VolumeSource{
-									Secret: &corev1.SecretVolumeSource{
-										SecretName: caSecretName,
-									},
-								},
-							},
-							{
-								Name: "threshold-keys",
-								VolumeSource: corev1.VolumeSource{
-									Secret: &corev1.SecretVolumeSource{
-										SecretName: thresholdKeysSecret,
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		}
+		},
+		Volumes: podVolumes,
+	}
+
+	// Job Spec
+	jobSpec := batchv1.JobSpec{
+		BackoffLimit: &unseal.Spec.RetryCount,
+		Template: corev1.PodTemplateSpec{
+			Spec: podSpec,
+		},
+	}
+
+	// Return job object
+	return &batchv1.Job{
+		ObjectMeta: jobMeta,
+		Spec:       jobSpec,
 	}
 }
 
